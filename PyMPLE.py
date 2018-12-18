@@ -46,7 +46,8 @@ class PyMPLE:
         # list of parameter bounds
         self.pbounds = pbounds
 
-    def step_CI(self, pname, pop=False, dr='up', stepfrac=0.01, alpha=0.05):
+    def step_CI(self, pname, pop=False, dr='up', stepfrac=0.01):
+
         # for stepping towards upper bound
         if dr == 'up':
             if self.pbounds[pname][1]:
@@ -73,7 +74,7 @@ class PyMPLE:
         _var_dict = dict()
         _obj_dict = dict()
 
-        def_SF = copy(stepfrac)  # default stepfrac
+        def_SF = float(stepfrac)  # default stepfrac
         ctol = self.ctol
         _obj_CI = self.obj
 
@@ -81,8 +82,8 @@ class PyMPLE:
         err = 0.0
         pstep = 0.0
         df = 1.0
-        etol = chi2.isf(alpha, df)
-        pardr = copy(self.popt)
+        etol = chi2.isf(self.alpha, df)
+        pardr = dict(self.popt)
         nextdr = self.popt[pname] - bd_eps
         bdreach = eval(bdcrit)
 
@@ -152,10 +153,11 @@ class PyMPLE:
                 return pardr, states_dict, _var_dict, _obj_dict
             i += 1
 
-    def get_CI(self, maxSteps=100, **kwds):
+    def get_CI(self, maxSteps=100, alpha=0.05, **kwds):
 
         # Get Confidence Intervals
         self.ctol = maxSteps
+        self.alpha = alpha
 
         states_dict = dict()
 
@@ -198,105 +200,86 @@ class PyMPLE:
         self.var_dict = _var_dict
         self.obj_dict = _obj_dict
         return {'Lower Bound': parlb, 'Upper Bound': parub}
-        
-    def ebarplots(self,):
+
+    def ebarplots(self):
         import matplotlib.pyplot as plt
         import seaborn as sns
         
-        nPars = len(self.popt)
+        nPars = len(self.pnames)
         sns.set(style='whitegrid')
         plt.figure(figsize=(11,5))
         nrow = np.floor(nPars/3)
         ncol = np.ceil(nPars/nrow)
-        for i in range(nPars):
+        # for future look into making collection of PyMPLE objects ->
+        # can put parameter bar plots from different subgroups on single plot
+        for i, pname in enumerate(self.pnames):
             ax = plt.subplot(nrow, ncol, i+1)
-            ax.bar(1, self.popt[i], 1, color='blue')
-            pub = self.parub[i] - self.popt[i]
-            plb = self.popt[i] - self.parlb[i]
+            ax.bar(1, self.popt[pname], 1, color='blue')
+            pub = self.parub[pname] - self.popt[pname]
+            plb = self.popt[pname] - self.parlb[pname]
             errs = [[plb], [pub]]
-            ax.errorbar(x=1.5, y=self.popt[i], yerr=errs, color='black')
-            plt.ylabel(self.pkey[i] + ' Value')
-            plt.xlabel(self.pkey[i])
-            
+            ax.errorbar(x=1.5, y=self.popt[pname], yerr=errs, color='black')
+            plt.ylabel(pname + ' Value')
+            plt.xlabel(pname)
+
         plt.tight_layout()
         plt.show()
-        
-    def plot_PL(self,):
+
+    def plot_PL(self):
         import matplotlib.pyplot as plt
         import seaborn as sns
         
-        nPars = len(self.pfix) - np.count_nonzero(self.pfix)
+        nPars = len(self.pnames)
         sns.set(style='whitegrid')
         PL_fig = plt.figure(figsize=(11, 6))
         nrow = np.floor(nPars/3)
         if nrow < 1:
             nrow = 1
         ncol = np.ceil(nPars/nrow)
-        # ndat, npat = np.shape(self.data)
-        j=1
-        for i, notfixed in enumerate(self.pfix):
-            if notfixed == 0:
-                dp = 0.0
-                dob = 0.0
-                k = 0
-                PLub = []
-                OBub = []
-                PLlb = []
-                OBlb = []
-                while dp < self.parub[i] and k < self.ctol:
-                    kname = '_'.join([self.pkey[i], 'inst_up', str(k)])
-                    dp = self.var_dict[kname][i]
-                    dob = log(self.obj_dict[kname])
-                    PLub.append(dp)
-                    OBub.append(2*dob)
-                    k += 1
-                k = 0
-                while dp > self.parlb[i] and k < self.ctol:
-                    kname = '_'.join([self.pkey[i], 'inst_down', str(k)])
-                    dp = self.var_dict[kname][i]
-                    dob = log(self.obj_dict[kname])
-                    PLlb = np.append(dp, PLlb)
-                    OBlb = np.append(2*dob, OBlb)
-                    k += 1
-            else:
-                continue
-            
-            PL = np.append(PLlb, PLub)
-            OB = np.append(OBlb, OBub)
-            ax = plt.subplot(nrow, ncol, j)
-            j += 1
-            ax.plot(PL, OB)
-            chibd = OBub[0]+chi2.isf(self.alpha, 1)
-            ax.plot(PLub[0], OBub[0], marker='o')
-            ax.plot([PLlb[0],PLub[-1]],[chibd,chibd])
-            plt.xlabel(self.pkey[i]+' Value')
+
+        for i, pname in enumerate(self.pnames):
+            pkeys = sorted(filter(lambda x: '_'.split(x)[0] == pname,
+                                  self.var_dict.keys()))
+            pl = [self.var_dict[key] for key in pkeys]
+            pl.append(self.popt[pname])
+            obj = [self.obj_dict[key] for key in pkeys]
+            obj.append(self.obj)
+            obj = [x for y, x in sorted(zip(pl, obj))]
+            pl = sorted(pl)
+
+            ax = plt.subplot(nrow, ncol, i+1)
+            ax.plot(pl, obj)
+            chibd = self.obj + chi2.isf(self.alpha, 1)
+            ax.plot(self.popt[pname], self.obj, marker='o')
+            ax.hline(chibd)
+            plt.xlabel(pname +' Value')
             plt.ylabel('Objective Value')
         plt.tight_layout()
         plt.show()
         return PL_fig
         
-    def plot_trajectories(self, states):
-        import matplotlib.pyplot as plt
-        import seaborn as sns
+    # def plot_trajectories(self, states):
+    #     import matplotlib.pyplot as plt
+    #     import seaborn as sns
         
-        nrow = np.floor(len(states)/2)
-        if nrow < 1:
-            nrow = 1
-        ncol = np.ceil(len(states)/nrow)
-        sns.set(style='whitegrid')
-        traj_Fig = plt.figure(figsize=(11, 10))
-        for k in self.state_traj:
-            j = 1
-            for i in range(len(states)):
-                ax = plt.subplot(nrow, ncol, j)
-                j += 1
-                ax.plot(self.times, self.state_traj[k][i])
-                plt.title(states[i])
-                plt.xlabel('Time')
-                plt.ylabel(states[i] + ' Value')
-        plt.tight_layout()
-        plt.show()
-        return traj_Fig
+    #     nrow = np.floor(len(states)/2)
+    #     if nrow < 1:
+    #         nrow = 1
+    #     ncol = np.ceil(len(states)/nrow)
+    #     sns.set(style='whitegrid')
+    #     traj_Fig = plt.figure(figsize=(11, 10))
+    #     for k in self.state_traj:
+    #         j = 1
+    #         for i in range(len(states)):
+    #             ax = plt.subplot(nrow, ncol, j)
+    #             j += 1
+    #             ax.plot(self.times, self.state_traj[k][i])
+    #             plt.title(states[i])
+    #             plt.xlabel('Time')
+    #             plt.ylabel(states[i] + ' Value')
+    #     plt.tight_layout()
+    #     plt.show()
+    #     return traj_Fig
     
     def pop(self, pname, lb=True, ub=True):
         CI_dict = dict()
