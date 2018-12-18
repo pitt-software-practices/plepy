@@ -46,8 +46,7 @@ class PyMPLE:
         # list of parameter bounds
         self.pbounds = pbounds
 
-    def step_CI(self, pname, pop=False, dr='up', stepfrac=0.01, solver='ipopt',
-                nfe=150, alpha=0.05):
+    def step_CI(self, pname, pop=False, dr='up', stepfrac=0.01, alpha=0.05):
         # for stepping towards upper bound
         if dr == 'up':
             if self.pbounds[pname][1]:
@@ -153,69 +152,51 @@ class PyMPLE:
                 return pardr, states_dict, _var_dict, _obj_dict
             i += 1
 
-    def get_CI(self, pfixed, data, maxSteps=100, stepfrac=0.01, solver='ipopt',
-               nfe=150, alpha=0.05):
+    def get_CI(self, maxSteps=100, **kwds):
 
         # Get Confidence Intervals
-        ctol = maxSteps
-        self.ctol = ctol
+        self.ctol = maxSteps
 
         states_dict = dict()
 
-        parub = copy(self.popt)
-        parlb = copy(self.popt)
+        parub = dict(self.popt)
+        parlb = dict(self.popt)
         _var_dict = dict()
         _obj_dict = dict()
-
-        def_SF = copy(stepfrac)
-        pfixCI = copy(pfixed)
 
         _obj_CI = self.obj
 
         # Initialize parameters
-        for j in range(len(pfixed)):
-            if self.hard_bounds:
-                lower_bound = self.bounds[j][0]
-                upper_bound = self.bounds[j][1]
-            else:
-                lower_bound = 1e-10
-                upper_bound = float('Inf')
+        for pname in self.pnames:
+            # manually change parameter of interest
+            self.plist[pname].fix()
 
-            if pfixed[j] == 0:
-                pfixCI[j] = 1   # manually change parameter of interest
-                # step to upper limit
-                parub[j], upstates, upvars, upobj = self.step_CI(
-                    pfixCI, data, j, upper_bound, dr='up', stepfrac=stepfrac,
-                    solver=solver, nfe=nfe, alpha=alpha
-                )
-                states_dict = {**states_dict, **upstates}
-                _var_dict = {**_var_dict, **upvars}
-                _obj_dict = {**_obj_dict, **upobj}
-                # step to lower limit
-                stepfrac[j] = def_SF[j] # reset stepfrac
-                parlb[j], dnstates, dnvars, dnobj = self.step_CI(
-                    pfixCI, data, j, lower_bound, dr='down', stepfrac=stepfrac,
-                    solver=solver, nfe=nfe, alpha=alpha
-                )
-                states_dict = {**states_dict, **dnstates}
-                _var_dict = {**_var_dict, **dnvars}
-                _obj_dict = {**_obj_dict, **dnobj}
+            # step to upper limit
+            parub[pname], upstates, upvars, upobj = self.step_CI(
+                pname, dr='up', **kwds
+            )
+            states_dict = {**states_dict, **upstates}
+            _var_dict = {**_var_dict, **upvars}
+            _obj_dict = {**_obj_dict, **upobj}
 
-                pfixCI[j] = pfixed[j] # change back to variable
-            else:
-                continue
-        iterinst, _ = self.m(data, solver, nfe, pfixed, self.popt, self.pkey,
-                             bound=self.bounds)
+            # step to lower limit
+            self.plist[pname].set_value(self.popt[pname])
+            parlb[pname], dnstates, dnvars, dnobj = self.step_CI(
+                pname, dr='down', **kwds
+            )
+            states_dict = {**states_dict, **dnstates}
+            _var_dict = {**_var_dict, **dnvars}
+            _obj_dict = {**_obj_dict, **dnobj}
+            
+            # reset variable
+            self.plist[pname].set_value(self.popt[pname])
+            self.plist[pname].unfix()
 
+        # assign profile likelihood bounds to PyMPLE object
         self.parub = parub
         self.parlb = parlb
         self.var_dict = _var_dict
         self.obj_dict = _obj_dict
-        self.pfix = pfixed
-        self.data = data
-        self.alpha = alpha
-        self.state_traj = states_dict
-        self.times = iterinst.t
         return {'Lower Bound': parlb, 'Upper Bound': parub}
         
     def ebarplots(self,):
