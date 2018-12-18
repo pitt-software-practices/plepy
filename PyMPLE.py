@@ -1,43 +1,69 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Mar  4 13:36:36 2016
-
-@author: Matthew Markovetz
-
-This can remain umodified if you so choose. As long as you structure your model
-module and run-file in the same format as provided in the example file, this
-wonderful piece of code need never see the light of day.
-"""
-
 import numpy as np
 import scipy as sp
 from pyomo.environ import *
+from pyomo.dae import *
 from scipy.stats.distributions import chi2
 from numpy import copy
 
 
 class PyMPLE:
 
-    def __init__(self, params, model, objective, pnames, bounds, states,
-                 hard=False):
-        self.popt = params
-        self.m = model
-        self.obj = objective
-        self.pkey = pnames
-        self.bounds = bounds
-        self.hard_bounds = hard
-        self.states = states
+    def __init__(self, model, pnames, solver='ipopt', solver_kwds={},
+                 tee=False, dae=None, dae_kwds={}, presolve=False):
+        # Define solver & options
+        solver_opts = {
+            'linear_solver': 'ma97',
+            'tol': 1e-6
+        }
+        solver_opts = {**solver_opts, **solver_kwds}
+        opt = SolverFactory(solver)
+        opt.options = solver_opts
+        self.solver = opt
 
-    def step_CI(self, pfixCI, data, pindex, bound, pop=False, dr='up',
-                stepfrac=0.01, solver='ipopt', nfe=150, alpha=0.05):
+        self.m = model
+        # Discretize and solve model if necessary
+        if dae and presolve:
+            if not isinstance(dae, str):
+                raise TypeError
+            tfd = TransformationFactory("dae." + dae)
+            tfd.apply_to(self.m, **dae_kwds)
+        if presolve:
+            r = self.solver.solve(self.m)
+            self.m.solutions.load_from(r)
+
+        # Gather parameters to be profiled, their optimized values, and bounds
+        # list of names of parameters to be profiled
+        self.pnames = pnames
+        m_items = self.m.component_objects()
+        m_obj = list(filter(lambda x: isinstance(x, Objective), m_items))[0]
+        self.obj = m_obj    # original objective value
+        pprofile = {p: self.m.find_component(p) for p in self.pnames}
+        # list of Pyomo Variable objects to be profiled
+        self.plist = pprofile
+        # list of optimal parameter values
+        self.popt = {p: value(self.plist) for p in self.pnames}
+        pbounds = {p: self.plist[p].bounds for p in self.pnames}
+        # list of parameter bounds
+        self.pbounds = pbounds
+
+    def step_CI(self, pname, pop=False, dr='up', stepfrac=0.01, solver='ipopt',
+                nfe=150, alpha=0.05):
         # for stepping towards upper bound
         if dr == 'up':
+            if self.pbounds[pname][1]:
+                bound = self.pbounds[pname][1]
+            else:
+                bound = float('Inf')
             dB = 'UB'
             drer = 'upper'
             bdcrit = 'nextdr > bound'
             bd_eps = 1.0e-5
         # for stepping towards lower bound
         else:
+            if self.pbounds[pname][0]:
+                bound = self.pbounds[pname][0]
+            else:
+                bound = 1e-10
             dB = 'LB'
             drer = 'lower'
             stepfrac = -stepfrac
@@ -47,11 +73,10 @@ class PyMPLE:
         states_dict = dict()
         _var_dict = dict()
         _obj_dict = dict()
+
         def_SF = copy(stepfrac)  # default stepfrac
-        parkey = self.pkey
         ctol = self.ctol
         _obj_CI = self.obj
-        j = pindex
 
         i = 0
         err = 0.0
@@ -59,70 +84,73 @@ class PyMPLE:
         df = 1.0
         etol = chi2.isf(alpha, df)
         pardr = copy(self.popt)
-        nextdr = self.popt[j] - bd_eps
+        nextdr = self.popt[pname] - bd_eps
         bdreach = eval(bdcrit)
 
         while i < ctol and err <= etol and bdreach:
-            pstep = pstep + stepfrac[j]*self.popt[j]    # stepsize
-            pardr[j] = self.popt[j] + pstep     # take step
-            itername = '_'.join([parkey[j], 'inst_%s' % (dr), str(i)])
+            pstep = pstep + stepfrac*self.popt[pname]    # stepsize
+            pardr = self.popt[pname] + pstep     # take step
+            self.plist[pname].set_value(pardr)
+            iname = '_'.join([pname, 'inst_%s' % (dr), str(i)])
             # ^seems like kind of a long name
             try:
-                iterinst, _ = self.m(data, solver, nfe, pfixCI, pardr,
-                                     self.pkey, bound=self.bounds)
+                riter = self.solver.solve(self.m)
+                self.m.solutions.load_from(riter)
             except ValueError as e:
                 z = e
                 print(z)
                 i = ctol
                 continue
+            """
             if pop:
-                states_dict[itername] = [[value(getattr(iterinst, a)[b, c])
+                states_dict[iname] = [[value(getattr(iterinst, a)[b, c])
                                           for b in iterinst.t
                                           for c in iterinst.N]
                                          for a in self.states]
             else:
-                states_dict[itername] = [[value(getattr(iterinst, a)[b])
+                states_dict[iname] = [[value(getattr(iterinst, a)[b])
                                           for b in iterinst.t]
                                          for a in self.states]
+            """
 
-            err = 2*(log(value(iterinst.obj)) - log(_obj_CI))
-            _var_dict[itername] = [value(getattr(iterinst, parkey[a]))
-                                   for a in range(len(parkey))]
-            _obj_dict[itername] = value(iterinst.obj)
+            err = 2*(np.log(value(self.m.obj)) - np.log(_obj_CI))
+            _var_dict[iname] = value(getattr(self.m, pname))
+            _obj_dict[iname] = value(self.m.obj)
 
             # adjust step size if convergence slow
             if i > 0:
-                prname = '_'.join([parkey[j], 'inst_%s' % (dr), str(i-1)])
-                d = np.abs((log(_obj_dict[prname]) - log(_obj_dict[itername])))
-                d = d/log(_obj_dict[prname])/stepfrac[j]
+                prname = '_'.join([pname, 'inst_%s' % (dr), str(i-1)])
+                d = np.abs((np.log(_obj_dict[prname])
+                            - np.log(_obj_dict[iname])))
+                d /= np.log(_obj_dict[prname])*stepfrac
             else:
                 d = err
 
             if d <= 0.01:  # if obj change too small, increase stepsize
-                pstr = ['Stepsize increased from', str(stepfrac[j]), 'to',
-                        str(1.05*stepfrac[j]), 'with previous p value:',
-                        str(pardr[j])]
+                pstr = ['Stepsize increased from', str(stepfrac), 'to',
+                        str(1.05*stepfrac), 'with previous p value:',
+                        str(pardr)]
                 print(' '.join(pstr))
-                stepfrac[j] = 1.05*stepfrac[j]
+                stepfrac = 1.05*stepfrac
             else:
-                stepfrac[j] = stepfrac[j] + def_SF[j]
+                stepfrac = def_SF
 
             # print iteration info
-            pstr = ['finished %s iteration' % (dB), parkey[j], str(i),
+            pstr = ['finished %s iteration' % (dB), pname, str(i),
                     'with error:', str(err), 'and parameter change:',
                     str(pstep)]
             print(' '.join(pstr))
             if err > etol:
                 print('Reached %s CI!' % (drer))
-                return pardr[j], states_dict, _var_dict, _obj_dict
+                return pardr, states_dict, _var_dict, _obj_dict
             elif i == ctol-1:
                 return np.inf, states_dict, _var_dict, _obj_dict
 
-            nextdr = self.popt[j] + pstep + stepfrac[j]*self.popt[j]
+            nextdr += pstep + stepfrac*self.popt[pname]
             bdreach = eval(bdcrit)
             if bdreach:
                 print('Reached parameter %s bound!' % (drer))
-                return pardr[j], states_dict, _var_dict, _obj_dict
+                return pardr, states_dict, _var_dict, _obj_dict
             i += 1
 
     def get_CI(self, pfixed, data, maxSteps=100, stepfrac=0.01, solver='ipopt',
