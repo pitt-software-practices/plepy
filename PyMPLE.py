@@ -4,6 +4,7 @@ from pyomo.environ import *
 from pyomo.dae import *
 from scipy.stats.distributions import chi2
 from numpy import copy
+import json
 
 
 class PyMPLE:
@@ -36,12 +37,12 @@ class PyMPLE:
         self.pnames = pnames
         m_items = self.m.component_objects()
         m_obj = list(filter(lambda x: isinstance(x, Objective), m_items))[0]
-        self.obj = m_obj    # original objective value
+        self.obj = value(m_obj)    # original objective value
         pprofile = {p: self.m.find_component(p) for p in self.pnames}
         # list of Pyomo Variable objects to be profiled
         self.plist = pprofile
         # list of optimal parameter values
-        self.popt = {p: value(self.plist) for p in self.pnames}
+        self.popt = {p: value(self.plist[p]) for p in self.pnames}
         pbounds = {p: self.plist[p].bounds for p in self.pnames}
         # list of parameter bounds
         self.pbounds = pbounds
@@ -56,7 +57,6 @@ class PyMPLE:
                 bound = float('Inf')
             dB = 'UB'
             drer = 'upper'
-            bdcrit = 'nextdr > bound'
             bd_eps = 1.0e-5
         # for stepping towards lower bound
         else:
@@ -67,7 +67,6 @@ class PyMPLE:
             dB = 'LB'
             drer = 'lower'
             stepfrac = -stepfrac
-            bdcrit = 'nextdr < bound'
             bd_eps = -1.0e-5
 
         states_dict = dict()
@@ -76,18 +75,21 @@ class PyMPLE:
 
         def_SF = float(stepfrac)  # default stepfrac
         ctol = self.ctol
-        _obj_CI = self.obj
+        _obj_CI = value(self.obj)
 
         i = 0
         err = 0.0
         pstep = 0.0
         df = 1.0
         etol = chi2.isf(self.alpha, df)
-        pardr = dict(self.popt)
+        pardr = float(self.popt[pname])
         nextdr = self.popt[pname] - bd_eps
-        bdreach = eval(bdcrit)
+        if dr == 'up':
+            bdreach = nextdr > bound
+        else:
+            bdreach = nextdr < bound
 
-        while i < ctol and err <= etol and bdreach:
+        while i < ctol and err <= etol and not bdreach:
             pstep = pstep + stepfrac*self.popt[pname]    # stepsize
             pardr = self.popt[pname] + pstep     # take step
             self.plist[pname].set_value(pardr)
@@ -147,13 +149,16 @@ class PyMPLE:
                 return np.inf, states_dict, _var_dict, _obj_dict
 
             nextdr += pstep + stepfrac*self.popt[pname]
-            bdreach = eval(bdcrit)
+            if dr == 'up':
+                bdreach = nextdr > bound
+            else:
+                bdreach = nextdr < bound
             if bdreach:
                 print('Reached parameter %s bound!' % (drer))
                 return pardr, states_dict, _var_dict, _obj_dict
             i += 1
 
-    def get_CI(self, maxSteps=100, alpha=0.05, **kwds):
+    def get_CI(self, maxSteps=100, alpha=0.05, stepfrac=0.01):
 
         # Get Confidence Intervals
         self.ctol = maxSteps
@@ -166,7 +171,7 @@ class PyMPLE:
         _var_dict = dict()
         _obj_dict = dict()
 
-        _obj_CI = self.obj
+        _obj_CI = value(self.obj)
 
         # Initialize parameters
         for pname in self.pnames:
@@ -175,7 +180,7 @@ class PyMPLE:
 
             # step to upper limit
             parub[pname], upstates, upvars, upobj = self.step_CI(
-                pname, dr='up', **kwds
+                pname, dr='up', stepfrac=stepfrac
             )
             states_dict = {**states_dict, **upstates}
             _var_dict = {**_var_dict, **upvars}
@@ -184,7 +189,7 @@ class PyMPLE:
             # step to lower limit
             self.plist[pname].set_value(self.popt[pname])
             parlb[pname], dnstates, dnvars, dnobj = self.step_CI(
-                pname, dr='down', **kwds
+                pname, dr='down', stepfrac=stepfrac
             )
             states_dict = {**states_dict, **dnstates}
             _var_dict = {**_var_dict, **dnvars}
@@ -238,20 +243,20 @@ class PyMPLE:
         ncol = np.ceil(nPars/nrow)
 
         for i, pname in enumerate(self.pnames):
-            pkeys = sorted(filter(lambda x: '_'.split(x)[0] == pname,
+            pkeys = sorted(filter(lambda x: x.split('_')[0] == pname,
                                   self.var_dict.keys()))
             pl = [self.var_dict[key] for key in pkeys]
             pl.append(self.popt[pname])
-            obj = [self.obj_dict[key] for key in pkeys]
-            obj.append(self.obj)
-            obj = [x for y, x in sorted(zip(pl, obj))]
+            ob = [self.obj_dict[key] for key in pkeys]
+            ob.append(self.obj)
+            ob = [x for y, x in sorted(zip(pl, ob))]
             pl = sorted(pl)
 
             ax = plt.subplot(nrow, ncol, i+1)
-            ax.plot(pl, obj)
-            chibd = self.obj + chi2.isf(self.alpha, 1)
+            ax.plot(pl, ob)
+            chibd = self.obj*np.exp(0.5*chi2.isf(self.alpha, 1))
             ax.plot(self.popt[pname], self.obj, marker='o')
-            ax.hline(chibd)
+            ax.plot([pl[0], pl[-1]], [chibd, chibd])
             plt.xlabel(pname +' Value')
             plt.ylabel('Objective Value')
         plt.tight_layout()
@@ -281,10 +286,24 @@ class PyMPLE:
     #     plt.show()
     #     return traj_Fig
     
-    def pop(self, pname, lb=True, ub=True):
-        CI_dict = dict()
-        for i in range(len(pname)):
-            plb = self.parlb[i]
-            pub = self.parub[i]
-            CI_dict[pname[i]] = (plb,pub)
-        return CI_dict
+    # def pop(self, pname, lb=True, ub=True):
+    #     CI_dict = dict()
+    #     for i in range(len(pname)):
+    #         plb = self.parlb[i]
+    #         pub = self.parub[i]
+    #         CI_dict[pname[i]] = (plb,pub)
+    #     return CI_dict
+
+    def to_json(self, filename):
+        atts = ['alpha', 'parub', 'parlb', 'var_dict', 'obj_dict']
+        sv_dict = {}
+        for att in atts:
+            sv_dict[att] = getattr(self, att)
+        with open(filename, 'w') as f:
+            json.dump(sv_dict, f)
+    
+    def load_json(self, filename):
+        with open(filename, 'r') as f:
+            sv_dict = json.load(f)
+        for att in sv_dict.keys():
+            setattr(self, att, sv_dict[att])
