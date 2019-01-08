@@ -80,11 +80,12 @@ t0 = time()
 # create the model
 model = ConcreteModel()
 model.t=ContinuousSet(initialize=data.index.values)
+model.time = Set(initialize=data.index.values, within=model.t, ordered=True)
 
 #Rate Constants and Variables (Parameters)
 model.k1f=Var(initialize=k1f,bounds=(1.0e-7,1.0e0))					
 model.k2=Var(initialize=k2,bounds=(1.0e-7,1.0e0))					
-model.k3=Var(initialize=k3,bounds=(1.0e-7,1.0e-1))					
+model.k3=Var(initialize=k3,bounds=(1.0e-7,1.0e0))					
 model.Platelet=Var(initialize=P0,bounds=(1.0,70))					
 
 
@@ -164,20 +165,19 @@ model.dLdt_1_con = Constraint(model.t, rule=dLdt_rule)
 
 # define the objective function
 def obj(m):
-    SSE=sum([(data.Value.loc[t]-m.T[t])**2 for t in data.index.values])
+    SSE=sum([(data.Value.loc[t]-m.T[t])**2 for t in model.time])
     return SSE
-
 model.obj = Objective(rule= obj)
 #TFD=TransformationFactory("dae.collocation")
 #TFD.apply_to(model,nfe=len(model.t),cp=3,wrt=model.t,scheme="LAGRANGE-RADAU")
 TFD=TransformationFactory("dae.finite_difference")
-TFD.apply_to(model,nfe=len(model.t),wrt=model.t,scheme="BACKWARD")
+TFD.apply_to(model, nfe=len(model.t), wrt=model.t, scheme="BACKWARD")
 # solve the problem
 opt = SolverFactory('ipopt')
 opt.options['linear_solver'] = "ma97"
-opt.options['tol'] = 1e-6
+opt.options['tol'] = 1e-5
 #model.preprocess()
-results = opt.solve(model, keepfiles=False, tee=True)
+results = opt.solve(model, keepfiles=False, tee=False)
 #model.load(results)
 model.solutions.load_from(results)
 
@@ -186,6 +186,7 @@ pl_inst = PyMPLE(model, ['k1f', 'k2', 'k3', 'Platelet'])
 
 t2 = time()
 pl_inst.load_json('pl_inst.json')
+# pl_inst.get_CI(maxSteps=1000, stepfrac=0.01)
+# pl_inst.to_json('pl_inst3.json')
 pl_inst.plot_PL()
-# pl_inst.get_CI()
-# t3 = time()
+t3 = time()

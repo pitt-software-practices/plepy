@@ -98,7 +98,7 @@ class PyMPLE:
             try:
                 riter = self.solver.solve(self.m)
                 self.m.solutions.load_from(riter)
-            except ValueError as e:
+            except Exception as e:
                 z = e
                 print(z)
                 i = ctol
@@ -146,7 +146,11 @@ class PyMPLE:
                 print('Reached %s CI!' % (drer))
                 return pardr, states_dict, _var_dict, _obj_dict
             elif i == ctol-1:
-                return np.inf, states_dict, _var_dict, _obj_dict
+                print('Maximum steps taken!')
+                if dr == 'up':
+                    return np.inf, states_dict, _var_dict, _obj_dict
+                else:
+                    return -np.inf, states_dict, _var_dict, _obj_dict
 
             nextdr += pstep + stepfrac*self.popt[pname]
             if dr == 'up':
@@ -233,7 +237,7 @@ class PyMPLE:
     def plot_PL(self):
         import matplotlib.pyplot as plt
         import seaborn as sns
-        
+
         nPars = len(self.pnames)
         sns.set(style='whitegrid')
         PL_fig = plt.figure(figsize=(11, 6))
@@ -247,15 +251,15 @@ class PyMPLE:
                                   self.var_dict.keys()))
             pl = [self.var_dict[key] for key in pkeys]
             pl.append(self.popt[pname])
-            ob = [self.obj_dict[key] for key in pkeys]
-            ob.append(self.obj)
+            ob = [np.log(self.obj_dict[key]) for key in pkeys]
+            ob.append(np.log(self.obj))
             ob = [x for y, x in sorted(zip(pl, ob))]
             pl = sorted(pl)
 
             ax = plt.subplot(nrow, ncol, i+1)
             ax.plot(pl, ob)
-            chibd = self.obj*np.exp(0.5*chi2.isf(self.alpha, 1))
-            ax.plot(self.popt[pname], self.obj, marker='o')
+            chibd = np.log(self.obj) + chi2.isf(self.alpha, 1)/2
+            ax.plot(self.popt[pname], np.log(self.obj), marker='o')
             ax.plot([pl[0], pl[-1]], [chibd, chibd])
             plt.xlabel(pname +' Value')
             plt.ylabel('Objective Value')
