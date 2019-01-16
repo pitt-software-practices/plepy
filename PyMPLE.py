@@ -68,6 +68,7 @@ class PyMPLE:
             drer = 'lower'
             stepfrac = -stepfrac
             bd_eps = -1.0e-5
+        print('Bound: %f' % (bound))
 
         states_dict = dict()
         _var_dict = dict()
@@ -98,69 +99,67 @@ class PyMPLE:
             try:
                 riter = self.solver.solve(self.m)
                 self.m.solutions.load_from(riter)
+
+                err = 2*(np.log(value(self.m.obj)) - np.log(_obj_CI))
+                _var_dict[iname] = value(getattr(self.m, pname))
+                _obj_dict[iname] = value(self.m.obj)
+
+                # adjust step size if convergence slow
+                if i > 0:
+                    prname = '_'.join([pname, 'inst_%s' % (dr), str(i-1)])
+                    d = np.abs((np.log(_obj_dict[prname])
+                                - np.log(_obj_dict[iname])))
+                    d /= np.abs(np.log(_obj_dict[prname]))*stepfrac
+                else:
+                    d = err
+
+                if d <= 0.01:  # if obj change too small, increase stepsize
+                    pstr = ['Stepsize increased from', str(stepfrac), 'to',
+                            str(1.05*stepfrac), 'with previous p value:',
+                            str(pardr)]
+                    print(' '.join(pstr))
+                    stepfrac = 1.05*stepfrac
+                else:
+                    stepfrac = def_SF
+
+                # print iteration info
+                pstr = ['finished %s iteration' % (dB), pname, str(i),
+                        'with error:', str(err), 'and parameter change:',
+                        str(pstep)]
+                print(' '.join(pstr))
+                if err > etol:
+                    print('Reached %s CI!' % (drer))
+                    return pardr, states_dict, _var_dict, _obj_dict
+                elif i == ctol-1:
+                    print('Maximum steps taken!')
+                    if dr == 'up':
+                        return np.inf, states_dict, _var_dict, _obj_dict
+                    else:
+                        return -np.inf, states_dict, _var_dict, _obj_dict
+
+                nextdr += self.popt[pname]*stepfrac
+                if dr == 'up':
+                    bdreach = nextdr > bound
+                    print('Next: %f' % (nextdr))
+                else:
+                    bdreach = nextdr < bound
+                    print('Next: %f' % (nextdr))
+
+                if bdreach:
+                    print('Reached parameter %s bound!' % (drer))
+                    return pardr, states_dict, _var_dict, _obj_dict
+                i += 1
             except Exception as e:
                 z = e
                 print(z)
-                i = ctol
-                continue
-            """
-            if pop:
-                states_dict[iname] = [[value(getattr(iterinst, a)[b, c])
-                                          for b in iterinst.t
-                                          for c in iterinst.N]
-                                         for a in self.states]
-            else:
-                states_dict[iname] = [[value(getattr(iterinst, a)[b])
-                                          for b in iterinst.t]
-                                         for a in self.states]
-            """
-
-            err = 2*(np.log(value(self.m.obj)) - np.log(_obj_CI))
-            _var_dict[iname] = value(getattr(self.m, pname))
-            _obj_dict[iname] = value(self.m.obj)
-
-            # adjust step size if convergence slow
-            if i > 0:
                 prname = '_'.join([pname, 'inst_%s' % (dr), str(i-1)])
-                d = np.abs((np.log(_obj_dict[prname])
-                            - np.log(_obj_dict[iname])))
-                d /= np.log(_obj_dict[prname])*stepfrac
-            else:
-                d = err
-
-            if d <= 0.01:  # if obj change too small, increase stepsize
-                pstr = ['Stepsize increased from', str(stepfrac), 'to',
-                        str(1.05*stepfrac), 'with previous p value:',
-                        str(pardr)]
-                print(' '.join(pstr))
-                stepfrac = 1.05*stepfrac
-            else:
-                stepfrac = def_SF
-
-            # print iteration info
-            pstr = ['finished %s iteration' % (dB), pname, str(i),
-                    'with error:', str(err), 'and parameter change:',
-                    str(pstep)]
-            print(' '.join(pstr))
-            if err > etol:
-                print('Reached %s CI!' % (drer))
+                iname = '_'.join([pname, 'inst_%s' % (dr), str(i)])
+                pardr = _var_dict[prname]
+                states_dict.pop(iname, None)
+                _var_dict.pop(iname, None)
+                _obj_dict.pop(iname, None)
+                i = ctol
                 return pardr, states_dict, _var_dict, _obj_dict
-            elif i == ctol-1:
-                print('Maximum steps taken!')
-                if dr == 'up':
-                    return np.inf, states_dict, _var_dict, _obj_dict
-                else:
-                    return -np.inf, states_dict, _var_dict, _obj_dict
-
-            nextdr += pstep + stepfrac*self.popt[pname]
-            if dr == 'up':
-                bdreach = nextdr > bound
-            else:
-                bdreach = nextdr < bound
-            if bdreach:
-                print('Reached parameter %s bound!' % (drer))
-                return pardr, states_dict, _var_dict, _obj_dict
-            i += 1
 
     def get_CI(self, maxSteps=100, alpha=0.05, stepfrac=0.01):
 
@@ -234,7 +233,7 @@ class PyMPLE:
         plt.tight_layout()
         plt.show()
 
-    def plot_PL(self):
+    def plot_PL(self, show=True, fname=None):
         import matplotlib.pyplot as plt
         import seaborn as sns
 
@@ -264,7 +263,10 @@ class PyMPLE:
             plt.xlabel(pname +' Value')
             plt.ylabel('Objective Value')
         plt.tight_layout()
-        plt.show()
+        if show:
+            plt.show()
+        else:
+            plt.savefig(fname, dpi=600)
         return PL_fig
         
     # def plot_trajectories(self, states):
