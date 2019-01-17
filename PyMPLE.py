@@ -49,6 +49,17 @@ class PyMPLE:
 
     def step_CI(self, pname, pop=False, dr='up', stepfrac=0.01):
 
+        def pprint(pname, inum, ierr, ipval, istep):
+            dash = '='*90
+            head = ' Iter. | Error | Par. Value | Stepsize | Par. Name'
+            iform = ' {:^5d} | {:^5.3f} | {:>10.4g} | {:>8.3g} | {:<49s}'
+            iprint = iform.format(inum, ierr, ipval, istep, pname)
+            if inum % 20 == 0:
+                print(*[dash, head, dash], sep='\n')
+                print(iprint)
+            else:
+                print(iprint)
+
         # for stepping towards upper bound
         if dr == 'up':
             if self.pbounds[pname][1]:
@@ -68,7 +79,6 @@ class PyMPLE:
             drer = 'lower'
             stepfrac = -stepfrac
             bd_eps = -1.0e-5
-        print('Bound: %f' % (bound))
 
         states_dict = dict()
         _var_dict = dict()
@@ -94,8 +104,7 @@ class PyMPLE:
             pstep = pstep + stepfrac*self.popt[pname]    # stepsize
             pardr = self.popt[pname] + pstep     # take step
             self.plist[pname].set_value(pardr)
-            iname = '_'.join([pname, 'inst_%s' % (dr), str(i)])
-            # ^seems like kind of a long name
+            iname = '_'.join([pname, dr, str(i)])
             try:
                 riter = self.solver.solve(self.m)
                 self.m.solutions.load_from(riter)
@@ -106,7 +115,7 @@ class PyMPLE:
 
                 # adjust step size if convergence slow
                 if i > 0:
-                    prname = '_'.join([pname, 'inst_%s' % (dr), str(i-1)])
+                    prname = '_'.join([pname, dr, str(i-1)])
                     d = np.abs((np.log(_obj_dict[prname])
                                 - np.log(_obj_dict[iname])))
                     d /= np.abs(np.log(_obj_dict[prname]))*stepfrac
@@ -114,21 +123,15 @@ class PyMPLE:
                     d = err
 
                 if d <= 0.01:  # if obj change too small, increase stepsize
-                    pstr = ['Stepsize increased from', str(stepfrac), 'to',
-                            str(1.05*stepfrac), 'with previous p value:',
-                            str(pardr)]
-                    print(' '.join(pstr))
                     stepfrac = 1.05*stepfrac
                 else:
                     stepfrac = def_SF
 
                 # print iteration info
-                pstr = ['finished %s iteration' % (dB), pname, str(i),
-                        'with error:', str(err), 'and parameter change:',
-                        str(pstep)]
-                print(' '.join(pstr))
+                pprint(pname, i, err, pardr, stepfrac*self.popt[pname])
                 if err > etol:
                     print('Reached %s CI!' % (drer))
+                    print('{:s} = {:.4g}'.format(dB, pardr))
                     return pardr, states_dict, _var_dict, _obj_dict
                 elif i == ctol-1:
                     print('Maximum steps taken!')
@@ -140,25 +143,26 @@ class PyMPLE:
                 nextdr += self.popt[pname]*stepfrac
                 if dr == 'up':
                     bdreach = nextdr > bound
-                    print('Next: %f' % (nextdr))
                 else:
                     bdreach = nextdr < bound
-                    print('Next: %f' % (nextdr))
 
                 if bdreach:
                     print('Reached parameter %s bound!' % (drer))
+                    print('{:s} = {:.4g}'.format(dB, pardr))
                     return pardr, states_dict, _var_dict, _obj_dict
                 i += 1
             except Exception as e:
                 z = e
                 print(z)
-                prname = '_'.join([pname, 'inst_%s' % (dr), str(i-1)])
-                iname = '_'.join([pname, 'inst_%s' % (dr), str(i)])
+                prname = '_'.join([pname, dr, str(i-1)])
+                iname = '_'.join([pname, dr, str(i)])
                 pardr = _var_dict[prname]
                 states_dict.pop(iname, None)
                 _var_dict.pop(iname, None)
                 _obj_dict.pop(iname, None)
                 i = ctol
+                print('Error occured!')
+                print('{:s} set to {:.4g}'.format(dB, pardr))
                 return pardr, states_dict, _var_dict, _obj_dict
 
     def get_CI(self, maxSteps=100, alpha=0.05, stepfrac=0.01):
@@ -182,6 +186,11 @@ class PyMPLE:
             self.plist[pname].fix()
 
             # step to upper limit
+            print(' '*90)
+            print('Parameter: {:s}'.format(pname))
+            print('Direction: Upward')
+            print('Bound: {:<.3g}'.format(self.pbounds[pname][1]))
+            print(' '*90)
             parub[pname], upstates, upvars, upobj = self.step_CI(
                 pname, dr='up', stepfrac=stepfrac
             )
@@ -190,6 +199,11 @@ class PyMPLE:
             _obj_dict = {**_obj_dict, **upobj}
 
             # step to lower limit
+            print(' '*90)
+            print('Parameter: {:s}'.format(pname))
+            print('Direction: Downward')
+            print('Bound: {:<.3g}'.format(self.pbounds[pname][0]))
+            print(' '*90)
             self.plist[pname].set_value(self.popt[pname])
             parlb[pname], dnstates, dnvars, dnobj = self.step_CI(
                 pname, dr='down', stepfrac=stepfrac
