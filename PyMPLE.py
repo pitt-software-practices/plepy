@@ -255,10 +255,11 @@ class PyMPLE:
 
     def plot_PL(self, show=True, fname=None):
         import matplotlib.pyplot as plt
+        import matplotlib as mpl
         import seaborn as sns
 
         nPars = len(self.pnames)
-        sns.set(style='darkgrid')
+        sns.set(style='darkgrid', rc={'axes.facecolor': '#757575'})
         PL_fig = plt.figure(figsize=(11, 6))
         nrow = nPars
         ncol = nPars
@@ -276,21 +277,25 @@ class PyMPLE:
             ob = [x for y, x in sorted(zip(pl, ob))]
             pl = sorted(pl)
             cg = [a - self.popt[pname] for a in pl]
+            cmap = mpl.cm.seismic
+            norm = mpl.colors.Normalize(vmin=-max(np.abs(cg)),
+                                        vmax=max(np.abs(cg)))
 
             for j in range(ncol):
                 if i == j:
                     ax = plt.subplot(nrow, ncol, k+1)
-                    ax.plot(pl, ob, ls='None', marker='o')
+                    ax.scatter(pl, ob, c=cg, cmap=cmap, norm=norm)
                     chibd = np.log(self.obj) + chi2.isf(self.alpha, 1)/2
-                    ax.plot(self.popt[pname], np.log(self.obj), marker='o')
-                    ax.plot([pl[0], pl[-1]], [chibd, chibd])
+                    ax.scatter(self.popt[pname], np.log(self.obj), c='g')
+                    ax.plot([pl[0], pl[-1]], [chibd, chibd], color='k')
                     plt.xlabel(pname +' Value')
                     plt.ylabel('Objective Value')
                     k += 1
                 else:
                     ax = plt.subplot(nrow, ncol, k+1)
-                    ax.plot(pdata[pnames[j]], ob, ls='None', marker='o')
-                    ax.plot(self.popt[pnames[j]], np.log(self.obj), marker='o')
+                    ax.scatter(pdata[pnames[j]], ob, c=cg, cmap=cmap,
+                               norm=norm)
+                    ax.scatter(self.popt[pnames[j]], np.log(self.obj), c='g')
                     plt.xlabel(pnames[j] + ' Value')
                     plt.ylabel('Objective Value')
                     k += 1
