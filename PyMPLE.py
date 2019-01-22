@@ -1,10 +1,10 @@
-import numpy as np
-import scipy as sp
-from pyomo.environ import *
-from pyomo.dae import *
-from scipy.stats.distributions import chi2
-from numpy import copy
 import json
+import numpy as np
+import pandas as pd
+from numpy import copy
+from scipy.stats.distributions import chi2
+from pyomo.dae import *
+from pyomo.environ import *
 
 
 class PyMPLE:
@@ -49,12 +49,12 @@ class PyMPLE:
 
     def step_CI(self, pname, pop=False, dr='up', stepfrac=0.01):
 
-        def pprint(pname, inum, ierr, ipval, istep):
+        def pprint(pname, inum, ierr, ipval, istep, ifreq=20):
             dash = '='*90
             head = ' Iter. | Error | Par. Value | Stepsize | Par. Name'
             iform = ' {:^5d} | {:^5.3f} | {:>10.4g} | {:>8.3g} | {:<49s}'
             iprint = iform.format(inum, ierr, ipval, istep, pname)
-            if inum % 20 == 0:
+            if inum % ifreq == 0:
                 print(*[dash, head, dash], sep='\n')
                 print(iprint)
             else:
@@ -81,7 +81,7 @@ class PyMPLE:
             bd_eps = -1.0e-5
 
         states_dict = dict()
-        _var_dict = dict()
+        vdict = dict()
         _obj_dict = dict()
 
         def_SF = float(stepfrac)  # default stepfrac
@@ -110,7 +110,8 @@ class PyMPLE:
                 self.m.solutions.load_from(riter)
 
                 err = 2*(np.log(value(self.m.obj)) - np.log(_obj_CI))
-                _var_dict[iname] = value(getattr(self.m, pname))
+                vdict[iname] = {k: value(getattr(self.m, k))
+                                for k in self.pnames}
                 _obj_dict[iname] = value(self.m.obj)
 
                 # adjust step size if convergence slow
@@ -132,13 +133,16 @@ class PyMPLE:
                 if err > etol:
                     print('Reached %s CI!' % (drer))
                     print('{:s} = {:.4g}'.format(dB, pardr))
-                    return pardr, states_dict, _var_dict, _obj_dict
+                    v_dict = pd.DataFrame.from_dict(vdict, orient='index')
+                    return pardr, states_dict, v_dict, _obj_dict
                 elif i == ctol-1:
                     print('Maximum steps taken!')
                     if dr == 'up':
-                        return np.inf, states_dict, _var_dict, _obj_dict
+                        v_dict = pd.DataFrame.from_dict(vdict, orient='index')
+                        return np.inf, states_dict, v_dict, _obj_dict
                     else:
-                        return -np.inf, states_dict, _var_dict, _obj_dict
+                        v_dict = pd.DataFrame.from_dict(vdict, orient='index')
+                        return -np.inf, states_dict, v_dict, _obj_dict
 
                 nextdr += self.popt[pname]*stepfrac
                 if dr == 'up':
@@ -149,21 +153,23 @@ class PyMPLE:
                 if bdreach:
                     print('Reached parameter %s bound!' % (drer))
                     print('{:s} = {:.4g}'.format(dB, pardr))
-                    return pardr, states_dict, _var_dict, _obj_dict
+                    v_dict = pd.DataFrame.from_dict(vdict, orient='index')
+                    return pardr, states_dict, v_dict, _obj_dict
                 i += 1
             except Exception as e:
                 z = e
                 print(z)
                 prname = '_'.join([pname, dr, str(i-1)])
                 iname = '_'.join([pname, dr, str(i)])
-                pardr = _var_dict[prname]
+                pardr = vdict[prname][pname]
                 states_dict.pop(iname, None)
-                _var_dict.pop(iname, None)
+                vdict.pop(iname, None)
                 _obj_dict.pop(iname, None)
                 i = ctol
                 print('Error occured!')
                 print('{:s} set to {:.4g}'.format(dB, pardr))
-                return pardr, states_dict, _var_dict, _obj_dict
+                v_dict = pd.DataFrame.from_dict(vdict, orient='index')
+                return pardr, states_dict, v_dict, _obj_dict
 
     def get_CI(self, maxSteps=100, alpha=0.05, stepfrac=0.01):
 
@@ -175,7 +181,7 @@ class PyMPLE:
 
         parub = dict(self.popt)
         parlb = dict(self.popt)
-        _var_dict = dict()
+        _var_df = pd.DataFrame(columns=self.pnames)
         _obj_dict = dict()
 
         _obj_CI = value(self.obj)
@@ -195,7 +201,7 @@ class PyMPLE:
                 pname, dr='up', stepfrac=stepfrac
             )
             states_dict = {**states_dict, **upstates}
-            _var_dict = {**_var_dict, **upvars}
+            _var_df = pd.concat([_var_df, upvars])
             _obj_dict = {**_obj_dict, **upobj}
 
             # step to lower limit
@@ -209,7 +215,7 @@ class PyMPLE:
                 pname, dr='down', stepfrac=stepfrac
             )
             states_dict = {**states_dict, **dnstates}
-            _var_dict = {**_var_dict, **dnvars}
+            _var_df = pd.concat([_var_df, dnvars])
             _obj_dict = {**_obj_dict, **dnobj}
             
             # reset variable
@@ -219,7 +225,7 @@ class PyMPLE:
         # assign profile likelihood bounds to PyMPLE object
         self.parub = parub
         self.parlb = parlb
-        self.var_dict = _var_dict
+        self.var_df = _var_df
         self.obj_dict = _obj_dict
         return {'Lower Bound': parlb, 'Upper Bound': parub}
 
@@ -252,30 +258,42 @@ class PyMPLE:
         import seaborn as sns
 
         nPars = len(self.pnames)
-        sns.set(style='whitegrid')
+        sns.set(style='darkgrid')
         PL_fig = plt.figure(figsize=(11, 6))
-        nrow = np.floor(nPars/3)
-        if nrow < 1:
-            nrow = 1
-        ncol = np.ceil(nPars/nrow)
+        nrow = nPars
+        ncol = nPars
+        pnames = sorted(self.pnames)
 
-        for i, pname in enumerate(self.pnames):
+        k = 0
+        for i in range(nrow):
+            pname = pnames[i]
             pkeys = sorted(filter(lambda x: x.split('_')[0] == pname,
-                                  self.var_dict.keys()))
-            pl = [self.var_dict[key] for key in pkeys]
-            pl.append(self.popt[pname])
+                                  self.var_df.index.values))
+            pdata = self.var_df.loc[pkeys]
+            pdata = pdata.sort_values(pname)
             ob = [np.log(self.obj_dict[key]) for key in pkeys]
-            ob.append(np.log(self.obj))
+            pl = [self.var_df[pname][key] for key in pkeys]
             ob = [x for y, x in sorted(zip(pl, ob))]
             pl = sorted(pl)
+            cg = [a - self.popt[pname] for a in pl]
 
-            ax = plt.subplot(nrow, ncol, i+1)
-            ax.plot(pl, ob)
-            chibd = np.log(self.obj) + chi2.isf(self.alpha, 1)/2
-            ax.plot(self.popt[pname], np.log(self.obj), marker='o')
-            ax.plot([pl[0], pl[-1]], [chibd, chibd])
-            plt.xlabel(pname +' Value')
-            plt.ylabel('Objective Value')
+            for j in range(ncol):
+                if i == j:
+                    ax = plt.subplot(nrow, ncol, k+1)
+                    ax.plot(pl, ob, ls='None', marker='o')
+                    chibd = np.log(self.obj) + chi2.isf(self.alpha, 1)/2
+                    ax.plot(self.popt[pname], np.log(self.obj), marker='o')
+                    ax.plot([pl[0], pl[-1]], [chibd, chibd])
+                    plt.xlabel(pname +' Value')
+                    plt.ylabel('Objective Value')
+                    k += 1
+                else:
+                    ax = plt.subplot(nrow, ncol, k+1)
+                    ax.plot(pdata[pnames[j]], ob, ls='None', marker='o')
+                    ax.plot(self.popt[pnames[j]], np.log(self.obj), marker='o')
+                    plt.xlabel(pnames[j] + ' Value')
+                    plt.ylabel('Objective Value')
+                    k += 1
         plt.tight_layout()
         if show:
             plt.show()
@@ -315,10 +333,13 @@ class PyMPLE:
     #     return CI_dict
 
     def to_json(self, filename):
-        atts = ['alpha', 'parub', 'parlb', 'var_dict', 'obj_dict']
+        atts = ['alpha', 'parub', 'parlb', 'var_df', 'obj_dict']
         sv_dict = {}
         for att in atts:
-            sv_dict[att] = getattr(self, att)
+            sv_var = getattr(self, att)
+            if type(sv_var) == pd.DataFrame:
+                sv_var = sv_var.to_dict()
+            sv_dict[att] = sv_var
         with open(filename, 'w') as f:
             json.dump(sv_dict, f)
     
@@ -326,4 +347,6 @@ class PyMPLE:
         with open(filename, 'r') as f:
             sv_dict = json.load(f)
         for att in sv_dict.keys():
+            if att == 'var_df':
+                sv_dict[att] = pd.DataFrame.from_dict(sv_dict[att])
             setattr(self, att, sv_dict[att])
