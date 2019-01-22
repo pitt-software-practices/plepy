@@ -259,13 +259,14 @@ class PyMPLE:
         import seaborn as sns
 
         nPars = len(self.pnames)
-        sns.set(style='darkgrid', rc={'axes.facecolor': '#757575'})
-        PL_fig = plt.figure(figsize=(11, 6))
         nrow = nPars
         ncol = nPars
+        sns.set(style='darkgrid', rc={'axes.facecolor': '#757575'})
+        PLfig, axs = plt.subplots(nrows=nrow, ncols=ncol, sharey=True)
+        PLfig.set_figwidth(11)
+        PLfig.set_figheight(6)
         pnames = sorted(self.pnames)
 
-        k = 0
         for i in range(nrow):
             pname = pnames[i]
             pkeys = sorted(filter(lambda x: x.split('_')[0] == pname,
@@ -283,28 +284,30 @@ class PyMPLE:
 
             for j in range(ncol):
                 if i == j:
-                    ax = plt.subplot(nrow, ncol, k+1)
+                    if nPars == 1:
+                        ax = axs
+                    else:
+                        ax = axs[i, j]
                     ax.scatter(pl, ob, c=cg, cmap=cmap, norm=norm)
                     chibd = np.log(self.obj) + chi2.isf(self.alpha, 1)/2
                     ax.scatter(self.popt[pname], np.log(self.obj), c='g')
                     ax.plot([pl[0], pl[-1]], [chibd, chibd], color='k')
-                    plt.xlabel(pname +' Value')
-                    plt.ylabel('Objective Value')
-                    k += 1
+                    ax.set_xlabel(pname +' Value', fontsize=10)
                 else:
-                    ax = plt.subplot(nrow, ncol, k+1)
+                    ax = axs[i, j]
                     ax.scatter(pdata[pnames[j]], ob, c=cg, cmap=cmap,
                                norm=norm)
                     ax.scatter(self.popt[pnames[j]], np.log(self.obj), c='g')
-                    plt.xlabel(pnames[j] + ' Value')
-                    plt.ylabel('Objective Value')
-                    k += 1
-        plt.tight_layout()
+                    ax.set_xlabel(pnames[j] + ' Value', fontsize=10)
+                if j == 0:
+                    ax.set_ylabel('Objective Value', fontsize=10)
+        PLfig.tight_layout()
         if show:
             plt.show()
         else:
             plt.savefig(fname, dpi=600)
-        return PL_fig
+            plt.close("all")
+        return PLfig
         
     # def plot_trajectories(self, states):
     #     import matplotlib.pyplot as plt
