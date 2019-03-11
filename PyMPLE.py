@@ -308,7 +308,42 @@ class PyMPLE:
             plt.savefig(fname, dpi=600)
             plt.close("all")
         return PLfig
-        
+
+    def plot_simplePL(self, show=True, fname=None):
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+
+        nPars = len(self.pnames)
+        sns.set(style='whitegrid')
+        PL_fig = plt.figure(figsize=(11, 6))
+        nrow = np.floor(nPars/3)
+        if nrow < 1:
+            nrow = 1
+        ncol = np.ceil(nPars/nrow)
+
+        for i, pname in enumerate(self.pnames):
+            pkeys = sorted(filter(lambda x: x.split('_')[0] == pname,
+                                  self.var_df.index.values))
+            pdata = self.var_df.loc[pkeys]
+            pdata = pdata.sort_values(pname)
+            ob = [np.log(self.obj_dict[key]) for key in pkeys]
+            pl = [self.var_df[pname][key] for key in pkeys]
+            ob = [x for y, x in sorted(zip(pl, ob))]
+            pl = sorted(pl)
+
+            ax = plt.subplot(nrow, ncol, i+1)
+            ax.plot(pl, ob)
+            chibd = np.log(self.obj) + chi2.isf(self.alpha, 1)/2
+            ax.plot(self.popt[pname], np.log(self.obj), marker='o')
+            ax.plot([pl[0], pl[-1]], [chibd, chibd])
+            plt.xlabel(pname +' Value')
+            plt.ylabel('Objective Value')
+        plt.tight_layout()
+        if show:
+            plt.show()
+        else:
+            plt.savefig(fname, dpi=600)
+        return PL_fig
     # def plot_trajectories(self, states):
     #     import matplotlib.pyplot as plt
     #     import seaborn as sns
