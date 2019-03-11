@@ -12,7 +12,7 @@ from matplotlib import interactive
 interactive(True)
 from pyomo.dae import ContinuousSet, DerivativeVar
 import pandas as pd
-from PyMPLE import PyMPLE
+from PLEpy import PLEpy
 from time import time
 
 # Set up data from file
@@ -143,8 +143,8 @@ results = opt.solve(model, keepfiles=False, tee=False)
 model.solutions.load_from(results)
 
 t1 = time()
-# Create instance of PyMPLE
-pl_inst = PyMPLE(model, ['k1f', 'k2', 'k3', 'Platelet'])
+# Create instance of PLEpy
+pl_inst = PLEpy(model, ['k1f', 'k2', 'k3', 'Platelet'])
 
 t2 = time()
 # Get profile likelihood estimates and (potentially) confidence intervals
@@ -154,8 +154,8 @@ t2 = time()
 # pl_inst.to_json('pl_inst2.json')
 
 # Load results from .json file
-pl_inst.load_json('pl_inst.json')
+# pl_inst.load_json('pl_inst.json')
 
 # Plot profile likelihood
-pl_inst.plot_PL()
+# pl_inst.plot_PL()
 t3 = time()
