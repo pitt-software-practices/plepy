@@ -157,5 +157,5 @@ t2 = time()
 pl_inst.load_json('pl_inst.json')
 
 # Plot profile likelihood
-pl_inst.plot_PL()
+pl_inst.plot_simplePL()
 t3 = time()
