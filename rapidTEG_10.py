@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 from matplotlib import interactive
 interactive(True)
-from pyomo.dae import *
+from pyomo.dae import ContinuousSet, DerivativeVar
 import pandas as pd
 from PyMPLE import PyMPLE
 from time import time
@@ -32,12 +32,8 @@ if maxdiff >= 1.7 and indexmax >= 200:
     print(':(')
     dataold = data
     data = data[:(indexmax)-5]
-    plt.figure(1)
-    plt.plot(data, 'k', dataold, 'y--')  
 else:
     print(':)')
-    plt.figure(1)    
-    plt.plot(data, 'k')
 
 ############################################################################
 # Model Jam
@@ -51,10 +47,9 @@ else:
 # L: Lysis
 
 # Rate constants
-k1f = 0.005
-k1b = 0.0
-k2 = 0.04
-k3 = 0.00004
+k1f = 5.0
+k2 = 4.0
+k3 = 4.0
 
 # Initial Conditions:
 Pa0 = 0.0
@@ -72,10 +67,10 @@ model.t = ContinuousSet(initialize=data.index.values)
 model.time = Set(initialize=data.index.values, within=model.t, ordered=True)
 
 # Rate Constants and Variables (Parameters)
-model.k1f = Var(initialize=k1f, bounds=(1.0e-7, 1.0e0))					
-model.k2 = Var(initialize=k2, bounds=(1.0e-7, 1.0e0))					
-model.k3 = Var(initialize=k3, bounds=(1.0e-7, 1.0e0))					
-model.Platelet = Var(initialize=P0, bounds=(1.0, 70))					
+model.k1f = Var(initialize=k1f, bounds=(1.0e-4, 1.0e3))
+model.k2 = Var(initialize=k2, bounds=(1.0e-5, 100.))
+model.k3 = Var(initialize=k3, bounds=(1.0e-2, 1.0e5))
+model.Platelet = Var(initialize=P0, bounds=(1.0, 70))
 
 
 # Concentration Variables, Define States
@@ -108,22 +103,22 @@ model.init_conditions = ConstraintList(rule=_init_conditions)
 # ODEs are defined in the return statement
 # p
 def dpdt_rule(m, t):
-  return m.dpdt[t] ==  -m.k1f*(m.p[t]) + k1b*m.pa[t]
+  return m.dpdt[t] ==  -m.k1f*(1e-3)*(m.p[t])
 model.dpdt_1_con = Constraint(model.t, rule=dpdt_rule)
 
 # pa
 def dpadt_rule(m, t):
-  return m.dpadt[t] ==  m.k1f*(m.p[t]) - k1b*m.pa[t] - m.k2*(m.pa[t]**n)
+  return m.dpadt[t] ==  m.k1f*(1e-3)*(m.p[t]) - m.k2*(1e-2)*(m.pa[t]**n)
 model.dpadt_1_con = Constraint(model.t, rule=dpadt_rule)
 
 # T
 def dTdt_rule(m, t):
-  return m.dTdt[t] ==  m.k2*(m.pa[t]**n) - m.k3*m.T[t]
+  return m.dTdt[t] ==  m.k2*(1e-2)*(m.pa[t]**n) - m.k3*(1e-5)*m.T[t]
 model.dTdt_1_con = Constraint(model.t, rule=dTdt_rule)
 
 # L
 def dLdt_rule(m, t):
-  return m.dLdt[t] ==  m.k3*m.T[t]
+  return m.dLdt[t] ==  m.k3*(1e-5)*m.T[t]
 model.dLdt_1_con = Constraint(model.t, rule=dLdt_rule)
 
 
@@ -153,14 +148,14 @@ pl_inst = PyMPLE(model, ['k1f', 'k2', 'k3', 'Platelet'])
 
 t2 = time()
 # Get profile likelihood estimates and (potentially) confidence intervals
-pl_inst.get_CI(maxSteps=1000, stepfrac=0.01)
+# pl_inst.get_CI(maxSteps=1000, stepfrac=0.01)
 
 # Save results to .json file
-pl_inst.to_json('pl_inst.json')
+# pl_inst.to_json('pl_inst2.json')
 
 # Load results from .json file
-# pl_inst.load_json('pl_inst.json')
+pl_inst.load_json('pl_inst.json')
 
 # Plot profile likelihood
-pl_inst.plot_PL()
+pl_inst.plot_simplePL()
 t3 = time()
