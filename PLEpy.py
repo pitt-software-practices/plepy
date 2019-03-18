@@ -467,6 +467,72 @@ class PLEpy:
             plt.savefig(fname, dpi=600)
         return PL_fig
 
+    def plot_dual(self, maxdtheta=3, sep_index=True, show=True, fname=None):
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+
+        # Get variable data in plotting format
+        df = pd.DataFrame(self.var_df).T
+        for c in df.columns:
+            if self.pindexed[c]:
+                cols = sorted(['_'.join([c, str(i)]) for i in self.pidx[c]])
+                df[cols] = df[c].apply(pd.Series).sort_index(axis=1)
+                df = df.drop(c, axis=1)
+
+        nPars = len(df.columns)
+        sns.set(style='whitegrid')
+        dual_fig = plt.figure(figsize=(11, 6))
+        nrow = np.floor(2*nPars/3)
+        if nrow < 1:
+            nrow = 1
+        ncol = np.ceil(2*nPars/nrow)
+
+        i = 1
+        for pname in df.columns:
+            if pname in self.pnames:
+                pkeys = sorted(filter(lambda x: x.split('_')[0] == pname,
+                                      df.index.values))
+            else:
+                pkeys = sorted(filter(lambda x: x.split('_')[:2] == 
+                                      pname.split('_'), df.index.values))
+            pdata = df.loc[pkeys]
+            pdata = pdata.sort_values(pname)
+            minrow = pdata.loc[pname + '_up_0']
+            ddf = df - minrow
+            ddf[pname] = pdata[pname]
+
+            # Plot PL
+            ob = [np.log(self.obj_dict[key]) for key in pkeys]
+            pl = [df[pname][key] for key in pkeys]
+            ob = [x for y, x in sorted(zip(pl, ob))]
+            pl = sorted(pl)
+
+            ax0 = plt.subplot(nrow, ncol, i)
+            ax0.plot(pl, ob)
+            chibd = np.log(self.obj) + chi2.isf(self.alpha, 1)/2
+            if pname in self.pnames:
+                ax0.plot(self.popt[pname], np.log(self.obj), marker='x')
+            else:
+                nm, idx = pname.split('_')
+                ax0.plot(self.popt[nm][int(idx)], np.log(self.obj), marker='x') # come back & change later
+            ax0.plot([pl[0], pl[-1]], [chibd, chibd])
+            plt.xlabel(pname + ' Value')
+            plt.ylabel('Objective Value')
+
+            # Plot parameter-parameter relationships
+            ax1 = plt.subplot(nrow, ncol, i + ncol)
+            cols = list(filter(lambda x: x != pname, df.columns))
+            ddf.plot(pname, cols, ax=ax1, sharex=ax0, ls='None', marker='.')
+            plt.xlabel(pname + ' Value')
+            plt.ylabel('Parameter Change')
+            i += 1
+        plt.tight_layout()
+        if show:
+            plt.show()
+        else:
+            plt.savefig(fname, dpi=600)
+        return dual_fig
+
     # def plot_trajectories(self, states):
     #     import matplotlib.pyplot as plt
     #     import seaborn as sns
@@ -489,14 +555,6 @@ class PLEpy:
     #     plt.tight_layout()
     #     plt.show()
     #     return traj_Fig
-    
-    # def pop(self, pname, lb=True, ub=True):
-    #     CI_dict = dict()
-    #     for i in range(len(pname)):
-    #         plb = self.parlb[i]
-    #         pub = self.parub[i]
-    #         CI_dict[pname[i]] = (plb,pub)
-    #     return CI_dict
 
     def to_json(self, filename):
         atts = ['alpha', 'parub', 'parlb', 'var_df', 'obj_dict', 'flag_dict']
