@@ -229,12 +229,18 @@ class PLEpy:
             except Exception as e:
                 z = e
                 print(z)
-                prname = '_'.join([prtname, dr, str(i-1)])
-                iname = '_'.join([prtname, dr, str(i)])
-                pardr = vdict[prname][pname]
-                states_dict.pop(iname, None)
-                vdict.pop(iname, None)
-                _obj_dict.pop(iname, None)
+                if i > 0:
+                    prname = '_'.join([prtname, dr, str(i-1)])
+                    iname = '_'.join([prtname, dr, str(i)])
+                    if idx is not None:
+                        pardr = vdict[prname][pname][idx]
+                    else:
+                        pardr = vdict[prname][pname]
+                    states_dict.pop(iname, None)
+                    vdict.pop(iname, None)
+                    _obj_dict.pop(iname, None)
+                else:
+                    pardr = popt
                 i = ctol
                 print('Error occured!')
                 print('{:s} set to {:.4g}'.format(dB, pardr))
@@ -472,7 +478,11 @@ class PLEpy:
         import seaborn as sns
 
         # Get variable data in plotting format
+        m = ['.', '^', 'x', 's']
         df = pd.DataFrame(self.var_df).T
+        fs = pd.Series(self.flag_dict, name='flag')
+        objs = pd.Series(self.obj_dict, name='objective')
+        plt_df = pd.concat((objs, fs), axis=1)
         for c in df.columns:
             if self.pindexed[c]:
                 cols = sorted(['_'.join([c, str(i)]) for i in self.pidx[c]])
@@ -481,6 +491,9 @@ class PLEpy:
 
         nPars = len(df.columns)
         sns.set(style='whitegrid')
+        pal = sns.color_palette('cubehelix', nPars)
+        colors = pal.as_hex()
+        clr_dict = dict(zip(df.columns, colors))
         dual_fig = plt.figure(figsize=(11, 6))
         nrow = np.floor(2*nPars/3)
         if nrow < 1:
@@ -498,31 +511,54 @@ class PLEpy:
             pdata = df.loc[pkeys]
             pdata = pdata.sort_values(pname)
             minrow = pdata.loc[pname + '_up_0']
-            ddf = df - minrow
+            ddf = pdata - minrow
             ddf[pname] = pdata[pname]
+            pdata = pd.concat((pdata, plt_df.loc[pkeys]), axis=1, sort=True)
+            pdata['ln_obj'] = pdata['objective'].apply(np.log)
 
             # Plot PL
-            ob = [np.log(self.obj_dict[key]) for key in pkeys]
-            pl = [df[pname][key] for key in pkeys]
-            ob = [x for y, x in sorted(zip(pl, ob))]
-            pl = sorted(pl)
+            # ob = [np.log(self.obj_dict[key]) for key in pkeys]
+            # pl = [df[pname][key] for key in pkeys]
+            # ob = [x for y, x in sorted(zip(pl, ob))]
+            # pl = sorted(pl)
 
             ax0 = plt.subplot(nrow, ncol, i)
-            ax0.plot(pl, ob)
+            for j in range(4):
+                ob_df = pdata[pdata.flag == j]
+                try:
+                    ob_df.plot(pname, 'ln_obj', ax=ax0, ls='None',
+                               marker=m[j], color='k', legend=False)
+                except TypeError:
+                    pass
             chibd = np.log(self.obj) + chi2.isf(self.alpha, 1)/2
             if pname in self.pnames:
-                ax0.plot(self.popt[pname], np.log(self.obj), marker='x')
+                ax0.plot(self.popt[pname], np.log(self.obj), marker='x',
+                         markersize=14, color='b')
             else:
                 nm, idx = pname.split('_')
-                ax0.plot(self.popt[nm][int(idx)], np.log(self.obj), marker='x') # come back & change later
-            ax0.plot([pl[0], pl[-1]], [chibd, chibd])
+                ax0.plot(self.popt[nm][int(idx)], np.log(self.obj), marker='x',
+                         markersize=14, color='b') # come back & change later
+            ax0.plot([min(pdata[pname]), max(pdata[pname])], [chibd, chibd],
+                     color='r')
             plt.xlabel(pname + ' Value')
             plt.ylabel('Objective Value')
 
             # Plot parameter-parameter relationships
             ax1 = plt.subplot(nrow, ncol, i + ncol)
             cols = list(filter(lambda x: x != pname, df.columns))
-            ddf.plot(pname, cols, ax=ax1, sharex=ax0, ls='None', marker='.')
+            for j in range(4):
+                par_df = ddf[pdata.flag == j]
+                try:
+                    if j == 0:
+                        lgnd = True
+                    else:
+                        lgnd = False
+                    par_df.plot(pname, cols, ax=ax1, sharex=ax0, ls='None',
+                                marker=m[j],
+                                color=[clr_dict.get(x, '#000000')
+                                       for x in cols], legend=lgnd)
+                except TypeError:
+                    pass
             plt.xlabel(pname + ' Value')
             plt.ylabel('Parameter Change')
             i += 1
