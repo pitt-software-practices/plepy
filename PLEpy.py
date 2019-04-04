@@ -70,7 +70,7 @@ class PLEpy:
             return self.plist[pname].get_values()
         else:
             return value(self.plist[pname])
-    
+
     def setval(self, pname, val):
         if self.pindexed[pname]:
             self.plist[pname].set_values(val)
@@ -78,12 +78,14 @@ class PLEpy:
             self.plist[pname].set_value(val)
 
     def step_CI(self, pname, idx=None, pop=False, dr='up', stepfrac=0.01):
+        # function for stepping in a single direction
 
         def pprint(pname, inum, ierr, ipval, istep, iflag=0, ifreq=20):
-            dash = '='*90
+            # function for iteration printing
+            dash = '='*80
             head = ' Iter. | Error | Par. Value | Stepsize | Par. Name | Flag'
             iform = (' {:^5d} | {:^5.3f} | {:>10.4g} | {:>8.3g} | {:<9s} |'
-                     ' {:<37d}')
+                     ' {:<27d}')
             iprint = iform.format(inum, ierr, ipval, istep, pname, iflag)
             if inum % ifreq == 0:
                 print(*[dash, head, dash], sep='\n')
@@ -92,6 +94,7 @@ class PLEpy:
                 print(iprint)
 
         def sflag(results):
+            # determine solver status for iteration & assign flag
             stat = results.solver.status
             tcond = results.solver.termination_condition
             if ((stat == SolverStatus.ok) and
@@ -107,11 +110,13 @@ class PLEpy:
 
         # for stepping towards upper bound
         if dr == 'up':
+            # for indexed variables...
             if idx is not None:
                 if self.pbounds[pname][idx][1]:
                     bound = self.pbounds[pname][idx][1]
                 else:
                     bound = float('Inf')
+            # for unindexed variables
             elif self.pbounds[pname][1]:
                 bound = self.pbounds[pname][1]
             else:
@@ -119,13 +124,16 @@ class PLEpy:
             dB = 'UB'
             drer = 'upper'
             bd_eps = 1.0e-5
+
         # for stepping towards lower bound
         else:
+            # for indexed variables...
             if idx is not None:
                 if self.pbounds[pname][idx][0]:
                     bound = self.pbounds[pname][idx][0]
                 else:
                     bound = 1e-10
+            # for unindexed variables...
             elif self.pbounds[pname][0]:
                 bound = self.pbounds[pname][0]
             else:
@@ -135,23 +143,23 @@ class PLEpy:
             stepfrac = -stepfrac
             bd_eps = -1.0e-5
 
-        states_dict = {}
-        vdict = {}
-        _obj_dict = {}
-        flag_dict = {}
+        states_dict = {}    # currently does nothing
+        vdict = {}  # dictionary for all parameter values at each step
+        _obj_dict = {}  # dictionary for objective values at each step
+        flag_dict = {}  # dictionary for solver flag at each step
 
         def_SF = float(stepfrac)  # default stepfrac
-        ctol = self.ctol
-        _obj_CI = value(self.obj)
+        ctol = self.ctol    # max number of steps
+        _obj_CI = value(self.obj)   # original objective value
 
         i = 0
         err = 0.0
         pstep = 0.0
         df = 1.0
-        etol = chi2.isf(self.alpha, df)
+        etol = chi2.isf(self.alpha, df)     # error tolerance for given alpha
         if idx is not None:
-            popt = self.popt[pname][idx]
-            prtname = '_'.join([pname, str(idx)])
+            popt = self.popt[pname][idx]    # parameter value at optimum
+            prtname = '_'.join([pname, str(idx)])   # printed parameter name
         else:
             popt = self.popt[pname]
             prtname = str(pname)
@@ -164,7 +172,7 @@ class PLEpy:
 
         while i < ctol and err <= etol and not bdreach:
             pstep = pstep + stepfrac*popt    # stepsize
-            pardr = popt + pstep     # take step
+            pardr = popt + pstep     # next parameter value
             # reset params to optimal solutions
             for p in self.pnames:
                 self.setval(p, self.popt[p])
@@ -253,7 +261,7 @@ class PLEpy:
         self.ctol = maxSteps
         self.alpha = alpha
 
-        states_dict = dict()
+        states_dict = dict()    # currently does nothing
 
         parub = dict(self.popt)
         parlb = dict(self.popt)
@@ -270,11 +278,11 @@ class PLEpy:
             self.plist[pname].fix()
 
             # step to upper limit
-            print(' '*90)
+            print(' '*80)
             print('Parameter: {:s}'.format(pname))
             print('Direction: Upward')
             print('Bound: {:<.3g}'.format(self.pbounds[pname][1]))
-            print(' '*90)
+            print(' '*80)
             parub[pname], upstates, upvars, upobj, upflag = self.step_CI(
                 pname, dr='up', stepfrac=stepfrac
             )
@@ -285,11 +293,11 @@ class PLEpy:
             _flag_dict = {**_flag_dict, **upflag}
 
             # step to lower limit
-            print(' '*90)
+            print(' '*80)
             print('Parameter: {:s}'.format(pname))
             print('Direction: Downward')
             print('Bound: {:<.3g}'.format(self.pbounds[pname][0]))
-            print(' '*90)
+            print(' '*80)
             self.plist[pname].set_value(self.popt[pname])
             parlb[pname], dnstates, dnvars, dnobj, dnflag = self.step_CI(
                 pname, dr='down', stepfrac=stepfrac
@@ -304,6 +312,7 @@ class PLEpy:
             self.plist[pname].set_value(self.popt[pname])
             self.plist[pname].unfix()
 
+        # Get CIs for indexed parameters
         for pname in filter(lambda x: self.pindexed[x], self.pnames):
             # manually change parameter of interest
             for idx in self.pidx[pname]:
@@ -312,12 +321,12 @@ class PLEpy:
                 parlb[pname] = {}
 
                 # step to upper limit
-                print(' '*90)
+                print(' '*80)
                 print('Parameter: {:s}'.format(pname))
                 print('Index: {:d}'.format(idx))
                 print('Direction: Upward')
                 print('Bound: {:<.3g}'.format(self.pbounds[pname][idx][1]))
-                print(' '*90)
+                print(' '*80)
                 parub[pname][idx], upstates, upvars, upobj, upflag = self.step_CI(
                     pname, idx=idx, dr='up', stepfrac=stepfrac
                 )
@@ -328,12 +337,12 @@ class PLEpy:
                 _flag_dict = {**_flag_dict, **upflag}
 
                 # step to lower limit
-                print(' '*90)
+                print(' '*80)
                 print('Parameter: {:s}'.format(pname))
                 print('Index: {:d}'.format(idx))
                 print('Direction: Downward')
                 print('Bound: {:<.3g}'.format(self.pbounds[pname][idx][0]))
-                print(' '*90)
+                print(' '*80)
                 self.setval(pname, self.popt[pname])
                 parlb[pname][idx], dnstates, dnvars, dnobj, dnflag = self.step_CI(
                     pname, idx=idx, dr='down', stepfrac=stepfrac
@@ -369,18 +378,17 @@ class PLEpy:
         # can put parameter bar plots from different subgroups on single plot
         for i, pname in enumerate(self.pnames):
             ax = plt.subplot(nrow, ncol, i+1)
-            ax.bar(1, self.popt[pname], 1, color='blue')
             pub = self.parub[pname] - self.popt[pname]
             plb = self.popt[pname] - self.parlb[pname]
             errs = [[plb], [pub]]
-            ax.errorbar(x=1.5, y=self.popt[pname], yerr=errs, color='black')
+            ax.bar(1, self.popt[pname], yerr=errs, tick_label=pname)
             plt.ylabel(pname + ' Value')
-            plt.xlabel(pname)
 
         plt.tight_layout()
         plt.show()
 
     def plot_PL(self, show=True, fname=None):
+        # Experimental plotting - doesn't currently work
         import matplotlib.pyplot as plt
         import matplotlib as mpl
         import seaborn as sns
@@ -438,6 +446,7 @@ class PLEpy:
 
 
     def plot_simplePL(self, show=True, fname=None):
+        # Plot just the PLs for each parameter - currently non-functional
         import matplotlib.pyplot as plt
         import seaborn as sns
 
@@ -474,6 +483,7 @@ class PLEpy:
         return PL_fig
 
     def plot_dual(self, maxdtheta=3, sep_index=True, show=True, fname=None):
+        # This one works :)
         import matplotlib.pyplot as plt
         import seaborn as sns
 
@@ -515,12 +525,6 @@ class PLEpy:
             ddf[pname] = pdata[pname]
             pdata = pd.concat((pdata, plt_df.loc[pkeys]), axis=1, sort=True)
             pdata['ln_obj'] = pdata['objective'].apply(np.log)
-
-            # Plot PL
-            # ob = [np.log(self.obj_dict[key]) for key in pkeys]
-            # pl = [df[pname][key] for key in pkeys]
-            # ob = [x for y, x in sorted(zip(pl, ob))]
-            # pl = sorted(pl)
 
             ax0 = plt.subplot(nrow, ncol, i)
             for j in range(4):
@@ -569,30 +573,8 @@ class PLEpy:
             plt.savefig(fname, dpi=600)
         return dual_fig
 
-    # def plot_trajectories(self, states):
-    #     import matplotlib.pyplot as plt
-    #     import seaborn as sns
-        
-    #     nrow = np.floor(len(states)/2)
-    #     if nrow < 1:
-    #         nrow = 1
-    #     ncol = np.ceil(len(states)/nrow)
-    #     sns.set(style='whitegrid')
-    #     traj_Fig = plt.figure(figsize=(11, 10))
-    #     for k in self.state_traj:
-    #         j = 1
-    #         for i in range(len(states)):
-    #             ax = plt.subplot(nrow, ncol, j)
-    #             j += 1
-    #             ax.plot(self.times, self.state_traj[k][i])
-    #             plt.title(states[i])
-    #             plt.xlabel('Time')
-    #             plt.ylabel(states[i] + ' Value')
-    #     plt.tight_layout()
-    #     plt.show()
-    #     return traj_Fig
-
     def to_json(self, filename):
+        # save PL data to a json file
         atts = ['alpha', 'parub', 'parlb', 'var_df', 'obj_dict', 'flag_dict']
         sv_dict = {}
         for att in atts:
@@ -604,6 +586,7 @@ class PLEpy:
             json.dump(sv_dict, f)
     
     def load_json(self, filename):
+        # load PL data from a json file
         with open(filename, 'r') as f:
             sv_dict = json.load(f)
         for att in sv_dict.keys():

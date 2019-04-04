@@ -1,19 +1,13 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Feb  5 13:26:43 2016
-
-@author: Pressly
-"""
-from pyomo.environ import *
-import math
-from matplotlib import pyplot as plt
+import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib import interactive
-interactive(True)
-from pyomo.dae import ContinuousSet, DerivativeVar
 import pandas as pd
+import sys
+from pyomo.dae import ContinuousSet, DerivativeVar
+from pyomo.environ import *
+sys.path.append("../")
 from PLEpy import PLEpy
-from time import time
+
+######### Shout out to Michelle for lending me your Pyomo model :) #########
 
 # Set up data from file
 data = pd.read_csv('ExampleTEG.txt', delimiter='\t') 
@@ -60,7 +54,6 @@ P0 = np.max(data.Value)
 # Dependance on activated platelets
 n = 2
 
-t0 = time()
 # Create the model in Pyomo
 model = ConcreteModel()
 model.t = ContinuousSet(initialize=data.index.values)
@@ -142,20 +135,19 @@ opt.options['tol'] = 1e-5
 results = opt.solve(model, keepfiles=False, tee=False)
 model.solutions.load_from(results)
 
-t1 = time()
+############################################################################
+
 # Create instance of PLEpy
 pl_inst = PLEpy(model, ['k1f', 'k2', 'k3', 'Platelet'])
 
-t2 = time()
 # Get profile likelihood estimates and (potentially) confidence intervals
 # pl_inst.get_CI(maxSteps=1000, stepfrac=0.01)
 
 # Save results to .json file
-# pl_inst.to_json('pl_inst2.json')
+# pl_inst.to_json('example_pl.json')
 
 # Load results from .json file
-# pl_inst.load_json('pl_inst.json')
+# pl_inst.load_json('example_pl.json')
 
 # Plot profile likelihood
-# pl_inst.plot_PL()
-t3 = time()
+# pl_inst.plot_dual()
