@@ -150,4 +150,4 @@ pl_inst = PLEpy(model, ['k1f', 'k2', 'k3', 'Platelet'])
 # pl_inst.load_json('example_pl.json')
 
 # Plot profile likelihood
-# pl_inst.plot_dual()
+# pl_inst.plot_dual(show=False, fname='rapidTEG_PL.png')
