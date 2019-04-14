@@ -141,13 +141,13 @@ model.solutions.load_from(results)
 pl_inst = PLEpy(model, ['k1f', 'k2', 'k3', 'Platelet'])
 
 # Get profile likelihood estimates and (potentially) confidence intervals
-# pl_inst.get_CI(maxSteps=1000, stepfrac=0.01)
+# pl_inst.get_CI(maxSteps=1000, stepfrac=0.05)
 
 # Save results to .json file
 # pl_inst.to_json('example_pl.json')
 
 # Load results from .json file
-# pl_inst.load_json('example_pl.json')
+pl_inst.load_json('example_pl.json')
 
 # Plot profile likelihood
-# pl_inst.plot_dual(show=False, fname='rapidTEG_PL.png')
+pl_inst.plot_simplePL()

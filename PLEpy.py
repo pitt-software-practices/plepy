@@ -145,7 +145,7 @@ class PLEpy:
 
         states_dict = {}    # currently does nothing
         vdict = {}  # dictionary for all parameter values at each step
-        _obj_dict = {}  # dictionary for objective values at each step
+        obj_dict = {}  # dictionary for objective values at each step
         flag_dict = {}  # dictionary for solver flag at each step
 
         def_SF = float(stepfrac)  # default stepfrac
@@ -189,15 +189,15 @@ class PLEpy:
 
                 err = 2*(np.log(value(self.m.obj)) - np.log(_obj_CI))
                 vdict[iname] = {k: self.getval(k) for k in self.pnames}
-                _obj_dict[iname] = value(self.m.obj)
+                obj_dict[iname] = value(self.m.obj)
                 flag_dict[iname] = iflag
 
                 # adjust step size if convergence slow
                 if i > 0:
                     prname = '_'.join([prtname, dr, str(i-1)])
-                    d = np.abs((np.log(_obj_dict[prname])
-                                - np.log(_obj_dict[iname])))
-                    d /= np.abs(np.log(_obj_dict[prname]))*stepfrac
+                    d = np.abs((np.log(obj_dict[prname])
+                                - np.log(obj_dict[iname])))
+                    d /= np.abs(np.log(obj_dict[prname]))*stepfrac
                 else:
                     d = err
 
@@ -211,16 +211,13 @@ class PLEpy:
                 if err > etol:
                     print('Reached %s CI!' % (drer))
                     print('{:s} = {:.4g}'.format(dB, pardr))
-                    # v_dict = pd.DataFrame.from_dict(vdict, orient='index')
-                    return pardr, states_dict, vdict, _obj_dict, flag_dict
+                    return pardr, states_dict, vdict, obj_dict, flag_dict
                 elif i == ctol-1:
                     print('Maximum steps taken!')
                     if dr == 'up':
-                        # v_dict = pd.DataFrame.from_dict(vdict, orient='index')
-                        return np.inf, states_dict, vdict, _obj_dict, flag_dict
+                        return np.inf, states_dict, vdict, obj_dict, flag_dict
                     else:
-                        # v_dict = pd.DataFrame.from_dict(vdict, orient='index')
-                        return -np.inf, states_dict, vdict, _obj_dict, flag_dict
+                        return -np.inf, states_dict, vdict, obj_dict, flag_dict
 
                 nextdr += popt*stepfrac
                 if dr == 'up':
@@ -231,8 +228,7 @@ class PLEpy:
                 if bdreach:
                     print('Reached parameter %s bound!' % (drer))
                     print('{:s} = {:.4g}'.format(dB, pardr))
-                    # v_dict = pd.DataFrame.from_dict(vdict, orient='index')
-                    return pardr, states_dict, vdict, _obj_dict, flag_dict
+                    return pardr, states_dict, vdict, obj_dict, flag_dict
                 i += 1
             except Exception as e:
                 z = e
@@ -246,14 +242,13 @@ class PLEpy:
                         pardr = vdict[prname][pname]
                     states_dict.pop(iname, None)
                     vdict.pop(iname, None)
-                    _obj_dict.pop(iname, None)
+                    obj_dict.pop(iname, None)
                 else:
                     pardr = popt
                 i = ctol
                 print('Error occured!')
                 print('{:s} set to {:.4g}'.format(dB, pardr))
-                # v_dict = pd.DataFrame.from_dict(vdict, orient='index')
-                return pardr, states_dict, vdict, _obj_dict, flag_dict
+                return pardr, states_dict, vdict, obj_dict, flag_dict
 
     def get_CI(self, maxSteps=100, alpha=0.05, stepfrac=0.01):
 
@@ -265,8 +260,7 @@ class PLEpy:
 
         parub = dict(self.popt)
         parlb = dict(self.popt)
-        # _var_df = pd.DataFrame(columns=self.pnames)
-        _var_df = dict()
+        _var_dict = dict()
         _obj_dict = dict()
         _flag_dict = dict()
 
@@ -287,8 +281,7 @@ class PLEpy:
                 pname, dr='up', stepfrac=stepfrac
             )
             states_dict = {**states_dict, **upstates}
-            # _var_df = pd.concat([_var_df, upvars])
-            _var_df = {**_var_df, **upvars}
+            _var_dict = {**_var_dict, **upvars}
             _obj_dict = {**_obj_dict, **upobj}
             _flag_dict = {**_flag_dict, **upflag}
 
@@ -303,8 +296,7 @@ class PLEpy:
                 pname, dr='down', stepfrac=stepfrac
             )
             states_dict = {**states_dict, **dnstates}
-            # _var_df = pd.concat([_var_df, dnvars])
-            _var_df = {**_var_df, **dnvars}
+            _var_dict = {**_var_dict, **dnvars}
             _obj_dict = {**_obj_dict, **dnobj}
             _flag_dict = {**_flag_dict, **dnflag}
             
@@ -327,12 +319,12 @@ class PLEpy:
                 print('Direction: Upward')
                 print('Bound: {:<.3g}'.format(self.pbounds[pname][idx][1]))
                 print(' '*80)
-                parub[pname][idx], upstates, upvars, upobj, upflag = self.step_CI(
+                upres = self.step_CI(
                     pname, idx=idx, dr='up', stepfrac=stepfrac
                 )
+                parub[pname][idx], upstates, upvars, upobj, upflag = upres
                 states_dict = {**states_dict, **upstates}
-                # _var_df = pd.concat([_var_df, upvars])
-                _var_df = {**_var_df, **upvars}
+                _var_dict = {**_var_dict, **upvars}
                 _obj_dict = {**_obj_dict, **upobj}
                 _flag_dict = {**_flag_dict, **upflag}
 
@@ -344,12 +336,12 @@ class PLEpy:
                 print('Bound: {:<.3g}'.format(self.pbounds[pname][idx][0]))
                 print(' '*80)
                 self.setval(pname, self.popt[pname])
-                parlb[pname][idx], dnstates, dnvars, dnobj, dnflag = self.step_CI(
+                dnres = self.step_CI(
                     pname, idx=idx, dr='down', stepfrac=stepfrac
                 )
+                parlb[pname][idx], dnstates, dnvars, dnobj, dnflag = dnres
                 states_dict = {**states_dict, **dnstates}
-                # _var_df = pd.concat([_var_df, dnvars])
-                _var_df = {**_var_df, **dnvars}
+                _var_dict = {**_var_dict, **dnvars}
                 _obj_dict = {**_obj_dict, **dnobj}
                 _flag_dict = {**_flag_dict, **dnflag}
 
@@ -360,7 +352,7 @@ class PLEpy:
         # assign profile likelihood bounds to PLEpy object
         self.parub = parub
         self.parlb = parlb
-        self.var_df = _var_df
+        self.var_dict = _var_dict
         self.obj_dict = _obj_dict
         self.flag_dict = _flag_dict
         return {'Lower Bound': parlb, 'Upper Bound': parub}
@@ -387,70 +379,21 @@ class PLEpy:
         plt.tight_layout()
         plt.show()
 
-    def plot_PL(self, show=True, fname=None):
-        # Experimental plotting - doesn't currently work
-        import matplotlib.pyplot as plt
-        import matplotlib as mpl
-        import seaborn as sns
-
-        nPars = len(self.pnames)
-        nrow = nPars
-        ncol = nPars
-        sns.set(style='darkgrid', rc={'axes.facecolor': '#757575'})
-        PLfig, axs = plt.subplots(nrows=nrow, ncols=ncol, sharey=True)
-        PLfig.set_figwidth(11)
-        PLfig.set_figheight(6)
-        pnames = sorted(self.pnames)
-
-        for i in range(nrow):
-            pname = pnames[i]
-            pkeys = sorted(filter(lambda x: x.split('_')[0] == pname,
-                                  self.var_df.index.values))
-            pdata = self.var_df.loc[pkeys]
-            pdata = pdata.sort_values(pname)
-            ob = [np.log(self.obj_dict[key]) for key in pkeys]
-            pl = [self.var_df[pname][key] for key in pkeys]
-            ob = [x for y, x in sorted(zip(pl, ob))]
-            pl = sorted(pl)
-            cg = [a - self.popt[pname] for a in pl]
-            cmap = mpl.cm.seismic
-            norm = mpl.colors.Normalize(vmin=-max(np.abs(cg)),
-                                        vmax=max(np.abs(cg)))
-
-            for j in range(ncol):
-                if i == j:
-                    if nPars == 1:
-                        ax = axs
-                    else:
-                        ax = axs[i, j]
-                    ax.scatter(pl, ob, c=cg, cmap=cmap, norm=norm)
-                    chibd = np.log(self.obj) + chi2.isf(self.alpha, 1)/2
-                    ax.scatter(self.popt[pname], np.log(self.obj), c='g')
-                    ax.plot([pl[0], pl[-1]], [chibd, chibd], color='k')
-                    ax.set_xlabel(pname +' Value', fontsize=10)
-                else:
-                    ax = axs[i, j]
-                    ax.scatter(pdata[pnames[j]], ob, c=cg, cmap=cmap,
-                               norm=norm)
-                    ax.scatter(self.popt[pnames[j]], np.log(self.obj), c='g')
-                    ax.set_xlabel(pnames[j] + ' Value', fontsize=10)
-                if j == 0:
-                    ax.set_ylabel('Objective Value', fontsize=10)
-        PLfig.tight_layout()
-        if show:
-            plt.show()
-        else:
-            plt.savefig(fname, dpi=600)
-            plt.close("all")
-        return PLfig
-
 
     def plot_simplePL(self, show=True, fname=None):
-        # Plot just the PLs for each parameter - currently non-functional
+        # Plot just the PLs for each parameter
         import matplotlib.pyplot as plt
         import seaborn as sns
 
-        nPars = len(self.pnames)
+        df = pd.DataFrame(self.var_dict).T
+        for c in df.columns:
+            if self.pindexed[c]:
+                cols = sorted(['_'.join([c, str(i)]) for i in self.pidx[c]])
+                df[cols] = df[c].apply(pd.Series).sort_index(axis=1)
+                df = df.drop(c, axis=1)
+        objs = pd.Series(self.obj_dict, name='objective').apply(np.log)
+
+        nPars = len(df.columns)
         sns.set(style='whitegrid')
         PL_fig = plt.figure(figsize=(11, 6))
         nrow = np.floor(nPars/3)
@@ -458,23 +401,33 @@ class PLEpy:
             nrow = 1
         ncol = np.ceil(nPars/nrow)
 
-        for i, pname in enumerate(self.pnames):
-            pkeys = sorted(filter(lambda x: x.split('_')[0] == pname,
-                                  self.var_df.index.values))
-            pdata = self.var_df.loc[pkeys]
+        i = 1
+        for pname in df.columns:
+            if pname in self.pnames:
+                pkeys = sorted(filter(lambda x: x.split('_')[0] == pname,
+                                      df.index.values))
+            else:
+                pkeys = sorted(filter(lambda x: x.split('_')[:2] == 
+                                      pname.split('_'), df.index.values))
+            pdata = df.loc[pkeys]
+            odata = objs.loc[pkeys]
+            plt_df = pd.concat((pdata, odata), axis=1, sort=True)
             pdata = pdata.sort_values(pname)
-            ob = [np.log(self.obj_dict[key]) for key in pkeys]
-            pl = [self.var_df[pname][key] for key in pkeys]
-            ob = [x for y, x in sorted(zip(pl, ob))]
-            pl = sorted(pl)
+            plt_df = plt_df.sort_values(pname)
 
-            ax = plt.subplot(nrow, ncol, i+1)
-            ax.plot(pl, ob)
+            ax0 = plt.subplot(nrow, ncol, i)
+            plt_df.plot(pname, 'objective', ax=ax0, legend=False)
             chibd = np.log(self.obj) + chi2.isf(self.alpha, 1)/2
-            ax.plot(self.popt[pname], np.log(self.obj), marker='o')
-            ax.plot([pl[0], pl[-1]], [chibd, chibd])
-            plt.xlabel(pname +' Value')
+            if pname in self.pnames:
+                ax0.plot(self.popt[pname], np.log(self.obj), marker='o')
+            else:
+                nm, idx = pname.split('_')
+                ax0.plot(self.popt[nm][int(idx)], np.log(self.obj), marker='o')
+                # come back & change later
+            ax0.plot([min(pdata[pname]), max(pdata[pname])], [chibd, chibd])
+            plt.xlabel(pname + ' Value')
             plt.ylabel('Objective Value')
+            i += 1
         plt.tight_layout()
         if show:
             plt.show()
@@ -489,7 +442,7 @@ class PLEpy:
 
         # Get variable data in plotting format
         m = ['.', '^', 'x', 's']
-        df = pd.DataFrame(self.var_df).T
+        df = pd.DataFrame(self.var_dict).T
         fs = pd.Series(self.flag_dict, name='flag')
         objs = pd.Series(self.obj_dict, name='objective')
         plt_df = pd.concat((objs, fs), axis=1)
@@ -575,7 +528,7 @@ class PLEpy:
 
     def to_json(self, filename):
         # save PL data to a json file
-        atts = ['alpha', 'parub', 'parlb', 'var_df', 'obj_dict', 'flag_dict']
+        atts = ['alpha', 'parub', 'parlb', 'var_dict', 'obj_dict', 'flag_dict']
         sv_dict = {}
         for att in atts:
             sv_var = getattr(self, att)
