@@ -458,9 +458,9 @@ class PLEpy:
         colors = pal.as_hex()
         clr_dict = dict(zip(df.columns, colors))
         dual_fig = plt.figure(figsize=(11, 6))
-        nrow = np.floor(2*nPars/3)
+        nrow = np.floor(nPars/3)*2
         if nrow < 1:
-            nrow = 1
+            nrow = 2
         ncol = np.ceil(2*nPars/nrow)
 
         i = 1
@@ -518,12 +518,15 @@ class PLEpy:
                     pass
             plt.xlabel(pname + ' Value')
             plt.ylabel('Parameter Change')
-            i += 1
+            if i % ncol:
+                i += 1
+            else:
+                i += ncol + 1
         plt.tight_layout()
         if show:
             plt.show()
         else:
-            plt.savefig(fname, dpi=600)
+            plt.savefig(fname, dpi=600, close=True)
         return dual_fig
 
     def to_json(self, filename):
