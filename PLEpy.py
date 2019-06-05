@@ -70,13 +70,13 @@ class PLEpy:
         if multistart:
             for p in self.pnames:
                 # Check if multistart specified for each parameter
-                if p in multistart.keys():
+                if p in sorted(multistart.keys()):
                     # Check specified correctly for indexed variables
                     if self.pindexed[p]:
                         pmulti = multistart[p]
                         if type(pmulti) == dict:
                             for idx in self.pidx[p]:
-                                if idx in pmulti.keys():
+                                if idx in sorted(pmulti.keys()):
                                     if type(pmulti[idx]) == list:
                                         continue
                                     elif isinstance(pmulti, numbers.Number):
@@ -162,7 +162,7 @@ class PLEpy:
                 # Create temporary multistart dict, replacing parameter being
                 # profiled with value of next step
                 tmpstart = dict(self.multistart)
-                if idx:
+                if idx is not None:
                     tmpstart[pname][idx] = [pardr]
                 else:
                     tmpstart[pname] = [pardr]
@@ -183,20 +183,25 @@ class PLEpy:
                 for p in self.pnames:
                     if self.pindexed[p]:
                         keys = sorted(self.pidx[p])
-                        k = {keys[i]: mstarts[p][i] for i in range(len(keys))}
-                        mstarts[p] = k
+                        for i in list(mstarts.keys()):
+                            m = {keys[j]: mstarts[i][p][j]
+                                 for j in range(len(keys))}
+                            mstarts[i][p] = m
                 return mstarts
 
-            if idx:
+            if idx is not None:
                 init_guesses = get_initial_guesses(pname, pardr, idx)
             else:
                 init_guesses = get_initial_guesses(pname, pardr)
 
             # Do up to 50 iterations for each inital guess
             obj50 = {}
-            orig_iters = int(self.solver['max_iter'])
-            self.solver['max_iter'] = 50
-            for i in init_guesses.keys():
+            if 'max_iter' in self.solver.options.keys():
+                orig_iters = int(self.solver.options['max_iter'])
+            else:
+                orig_iters = 3000
+            self.solver.options['max_iter'] = 50
+            for i in list(init_guesses.keys()):
                 ig = init_guesses[i]
                 for p in self.pnames:
                     self.setval(p, ig[p])
@@ -206,7 +211,7 @@ class PLEpy:
             sort_i = sorted(obj50, key=lambda k: obj50[k])
 
             # Continue solving best 3 candidates
-            self.solver['max_iter'] = orig_iters
+            self.solver.options['max_iter'] = orig_iters
             results = []
             objs = []
             top3 = sort_i[:3]
@@ -216,19 +221,19 @@ class PLEpy:
                     self.setval(p, ig[p])
                 res_i = self.solver.solve(self.m)
                 results.append(res_i)
-                self.m.solution.load_from(res_i)
+                self.m.solutions.load_from(res_i)
                 objs.append(value(self.m.obj))
-            results = [y for x, y in sorted(zip(objs, res_i))]
+            results = sorted(results, key=lambda x: objs[results.index(x)])
             return results[0]
 
         def _singlestep(pname, pardr, idx=None):
             for p in self.pnames:
                 self.setval(p, self.popt[p])
-            if idx:
+            if idx is not None:
                 self.plist[p][idx].set_value(pardr)
             else:
                 self.plist[p].set_value(pardr)
-            
+
             results = self.solver.solve(self.m)
             return results
 
