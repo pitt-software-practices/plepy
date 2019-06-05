@@ -1,4 +1,5 @@
 import json
+import numbers
 import numpy as np
 import pandas as pd
 from numpy import copy
@@ -11,7 +12,8 @@ from pyomo.environ import *
 class PLEpy:
 
     def __init__(self, model, pnames, solver='ipopt', solver_kwds={},
-                 tee=False, dae=None, dae_kwds={}, presolve=False):
+                 tee=False, dae=None, dae_kwds={}, presolve=False,
+                 multistart=None):
         # Define solver & options
         solver_opts = {
             'linear_solver': 'ma97',
@@ -64,6 +66,50 @@ class PLEpy:
                 self.popt[p] = value(self.plist[p])
                 # get parameter bounds
                 self.pbounds[p] = self.plist[p].bounds
+        # Create/validate multistart dictionary
+        if multistart:
+            for p in self.pnames:
+                # Check if multistart specified for each parameter
+                if p in multistart.keys():
+                    # Check specified correctly for indexed variables
+                    if self.pindexed[p]:
+                        pmulti = multistart[p]
+                        if type(pmulti) == dict:
+                            for idx in self.pidx[p]:
+                                if idx in pmulti.keys():
+                                    if type(pmulti[idx]) == list:
+                                        continue
+                                    elif isinstance(pmulti, numbers.Number):
+                                        pmulti[idx] = [pmulti[idx]]
+                                    else:
+                                        print('Warning! Invalid multistart!')
+                                        pmulti[idx] = [self.popt[p][idx]]
+                                else:
+                                    pmulti[idx] = [self.popt[p][idx]]
+                        else:
+                            print('Warning! Invalid multistart!')
+                            multistart[p] = {idx: [self.popt[p][idx]]
+                                             for idx in self.pidx[p]}
+                    # Check specified correctly for unindexed variables
+                    else:
+                        if type(multistart[p]) == list:
+                            continue
+                        elif isinstance(multistart[p], numbers.Number):
+                            multistart[p] = [multistart[p]]
+                        else:
+                            print('Warning! Invalid multistart!')
+                            multistart[p] = [self.popt[p]]
+                # If not specified, or specified incorrectly, set values to
+                # optimal solution
+                else:
+                    if self.pindexed[p]:
+                        multistart[p] = {idx: [self.popt[p][idx]]
+                                         for idx in self.pidx[p]}
+                    else:
+                        multistart[p] = [self.popt[p]]
+            self.multistart = multistart
+        else:
+            self.multistart = False
 
     def getval(self, pname):
         if self.pindexed[pname]:
@@ -107,6 +153,84 @@ class PLEpy:
             else:
                 flag = 3
             return flag
+
+        def _multistep(pname, pardr, idx=None):
+
+            def get_initial_guesses(pname, pardr, idx=None):
+                import itertools as it
+
+                # Create temporary multistart dict, replacing parameter being
+                # profiled with value of next step
+                tmpstart = dict(self.multistart)
+                if idx:
+                    tmpstart[pname][idx] = [pardr]
+                else:
+                    tmpstart[pname] = [pardr]
+                # Get product of initial guesses within indexed variables
+                for p in self.pnames:
+                    if self.pindexed[p]:
+                        k0 = [tmpstart[p][i] for i in sorted(self.pidx[p])]
+                        k = list(it.product(*k0))
+                        tmpstart[p] = k
+                # Get product of intial guesses
+                k0 = [tmpstart[i] for i in sorted(self.pnames)]
+                k = list(it.product(*k0))
+                # Convert back to dictionary with each entry as a dictionary of
+                # initial guesses for each parameter
+                mstarts = {i: {x: y for x, y in zip(sorted(self.pnames), k[i])}
+                           for i in range(len(k))}
+                # Expand entries for indexed variables
+                for p in self.pnames:
+                    if self.pindexed[p]:
+                        keys = sorted(self.pidx[p])
+                        k = {keys[i]: mstarts[p][i] for i in range(len(keys))}
+                        mstarts[p] = k
+                return mstarts
+
+            if idx:
+                init_guesses = get_initial_guesses(pname, pardr, idx)
+            else:
+                init_guesses = get_initial_guesses(pname, pardr)
+
+            # Do up to 50 iterations for each inital guess
+            obj50 = {}
+            orig_iters = int(self.solver['max_iter'])
+            self.solver['max_iter'] = 50
+            for i in init_guesses.keys():
+                ig = init_guesses[i]
+                for p in self.pnames:
+                    self.setval(p, ig[p])
+                results = self.solver.solve(self.m)
+                self.m.solutions.load_from(results)
+                obj50[i] = value(self.m.obj)
+            sort_i = sorted(obj50, key=lambda k: obj50[k])
+
+            # Continue solving best 3 candidates
+            self.solver['max_iter'] = orig_iters
+            results = []
+            objs = []
+            top3 = sort_i[:3]
+            for i in top3:
+                ig = init_guesses[i]
+                for p in self.pnames:
+                    self.setval(p, ig[p])
+                res_i = self.solver.solve(self.m)
+                results.append(res_i)
+                self.m.solution.load_from(res_i)
+                objs.append(value(self.m.obj))
+            results = [y for x, y in sorted(zip(objs, res_i))]
+            return results[0]
+
+        def _singlestep(pname, pardr, idx=None):
+            for p in self.pnames:
+                self.setval(p, self.popt[p])
+            if idx:
+                self.plist[p][idx].set_value(pardr)
+            else:
+                self.plist[p].set_value(pardr)
+            
+            results = self.solver.solve(self.m)
+            return results
 
         # for stepping towards upper bound
         if dr == 'up':
@@ -173,17 +297,18 @@ class PLEpy:
         while i < ctol and err <= etol and not bdreach:
             pstep = pstep + stepfrac*popt    # stepsize
             pardr = popt + pstep     # next parameter value
-            # reset params to optimal solutions
-            for p in self.pnames:
-                self.setval(p, self.popt[p])
-            # set value of parameter to be profiled
-            if idx is not None:
-                self.plist[pname][idx].set_value(pardr)
-            else:
-                self.plist[pname].set_value(pardr)
             iname = '_'.join([prtname, dr, str(i)])
             try:
-                riter = self.solver.solve(self.m)
+                if self.multistart:
+                    if idx is None:
+                        riter = _multistep(pname, pardr)
+                    else:
+                        riter = _multistep(pname, pardr, idx=idx)
+                else:
+                    if idx is None:
+                        riter = _singlestep(pname, pardr)
+                    else:
+                        riter = _singlestep(pname, pardr, idx=idx)
                 self.m.solutions.load_from(riter)
                 iflag = sflag(riter)
 
