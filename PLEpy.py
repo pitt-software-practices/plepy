@@ -230,9 +230,9 @@ class PLEpy:
             for p in self.pnames:
                 self.setval(p, self.popt[p])
             if idx is not None:
-                self.plist[p][idx].set_value(pardr)
+                self.plist[pname][idx].set_value(pardr)
             else:
-                self.plist[p].set_value(pardr)
+                self.plist[pname].set_value(pardr)
 
             results = self.solver.solve(self.m)
             return results
