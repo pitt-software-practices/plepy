@@ -13,7 +13,7 @@ class PLEpy:
 
     def __init__(self, model, pnames, solver='ipopt', solver_kwds={},
                  tee=False, dae=None, dae_kwds={}, presolve=False,
-                 multistart=None):
+                 multistart=None, multi_kwds={}):
         # Define solver & options
         solver_opts = {
             'linear_solver': 'ma97',
@@ -108,6 +108,11 @@ class PLEpy:
                     else:
                         multistart[p] = [self.popt[p]]
             self.multistart = multistart
+            self.multi_opts = {
+                'max_iter': 50,
+                'best_n': 3
+            }
+            self.multi_opts = {**self.multi_opts, **multi_kwds}
         else:
             self.multistart = False
 
@@ -194,36 +199,49 @@ class PLEpy:
             else:
                 init_guesses = get_initial_guesses(pname, pardr)
 
-            # Do up to 50 iterations for each inital guess
-            obj50 = {}
-            if 'max_iter' in self.solver.options.keys():
-                orig_iters = int(self.solver.options['max_iter'])
-            else:
-                orig_iters = 3000
-            self.solver.options['max_iter'] = 50
-            for i in list(init_guesses.keys()):
-                ig = init_guesses[i]
-                for p in self.pnames:
-                    self.setval(p, ig[p])
-                results = self.solver.solve(self.m)
-                self.m.solutions.load_from(results)
-                obj50[i] = value(self.m.obj)
-            sort_i = sorted(obj50, key=lambda k: obj50[k])
+            if self.multi_opts['max_iter']:
+                # Do multistart max iterations for each inital guess
+                objN = {}
+                if 'max_iter' in self.solver.options.keys():
+                    orig_iters = int(self.solver.options['max_iter'])
+                else:
+                    orig_iters = 3000
+                self.solver.options['max_iter'] = self.multi_opts['max_iter']
+                for i in list(init_guesses.keys()):
+                    ig = init_guesses[i]
+                    for p in self.pnames:
+                        self.setval(p, ig[p])
+                    results = self.solver.solve(self.m)
+                    self.m.solutions.load_from(results)
+                    objN[i] = value(self.m.obj)
+                sort_i = sorted(objN, key=lambda k: objN[k])
 
-            # Continue solving best 3 candidates
-            self.solver.options['max_iter'] = orig_iters
-            results = []
-            objs = []
-            top3 = sort_i[:3]
-            for i in top3:
-                ig = init_guesses[i]
-                for p in self.pnames:
-                    self.setval(p, ig[p])
-                res_i = self.solver.solve(self.m)
-                results.append(res_i)
-                self.m.solutions.load_from(res_i)
-                objs.append(value(self.m.obj))
-            results = sorted(results, key=lambda x: objs[results.index(x)])
+                # Continue solving best 3 candidates
+                self.solver.options['max_iter'] = orig_iters
+                results = []
+                objs = []
+                topN = sort_i[:self.multi_opts['best_n']]
+                for i in topN:
+                    ig = init_guesses[i]
+                    for p in self.pnames:
+                        self.setval(p, ig[p])
+                    res_i = self.solver.solve(self.m)
+                    results.append(res_i)
+                    self.m.solutions.load_from(res_i)
+                    objs.append(value(self.m.obj))
+                results = sorted(results, key=lambda x: objs[results.index(x)])
+            else:
+                results = []
+                objs = []
+                for i in list(init_guesses.keys()):
+                    ig = init_guesses[i]
+                    for p in self.pnames:
+                        self.setval(p, ig[p])
+                    res_i = self.solver.solve(self.m)
+                    results.append(res_i)
+                    self.m.solutions.load_from(res_i)
+                    objs.append(value(self.m.obj))
+                results = sorted(results, key=lambda x: objs[results.index(x)])
             return results[0]
 
         def _singlestep(pname, pardr, idx=None):
@@ -565,7 +583,7 @@ class PLEpy:
             plt.savefig(fname, dpi=600)
         return PL_fig
 
-    def plot_dual(self, maxdtheta=3, sep_index=True, show=True, fname=None):
+    def plot_dual(self, sep_index=True, show=True, fname=None):
         # This one works :)
         import matplotlib.pyplot as plt
         import seaborn as sns
