@@ -5,7 +5,7 @@ import sys
 from pyomo.dae import ContinuousSet, DerivativeVar
 from pyomo.environ import *
 sys.path.append("../")
-from PLEpy import PLEpy
+from tmpPLEpy import *
 
 ######### Shout out to Michelle for lending me your Pyomo model :) #########
 
@@ -141,13 +141,14 @@ model.solutions.load_from(results)
 pl_inst = PLEpy(model, ['k1f', 'k2', 'k3', 'Platelet'])
 
 # Get profile likelihood estimates and (potentially) confidence intervals
-pl_inst.get_CI(maxSteps=1000, stepfrac=0.05)
+# pl_inst.get_CI(maxSteps=1000, stepfrac=0.05)
+pl_inst.get_clims()
 
 # Save results to .json file
 # pl_inst.to_json('example_pl.json')
 
 # Load results from .json file
-pl_inst.load_json('example_pl.json')
+# pl_inst.load_json('example_pl.json')
 
 # Plot profile likelihood
-pl_inst.plot_simplePL()
+# pl_inst.plot_simplePL()

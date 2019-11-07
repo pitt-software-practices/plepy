@@ -4,14 +4,31 @@ import numpy as np
 import pandas as pd
 from numpy import copy
 from scipy.stats.distributions import chi2
+from sigfig import sigfig
 from pyomo.opt import SolverStatus, TerminationCondition
 from pyomo.dae import *
 from pyomo.environ import *
 
 
+def sflag(results):
+            # determine solver status for iteration & assign flag
+            stat = results.solver.status
+            tcond = results.solver.termination_condition
+            if ((stat == SolverStatus.ok) and
+                    (tcond == TerminationCondition.optimal)):
+                flag = 0
+            elif (tcond == TerminationCondition.infeasible):
+                flag = 1
+            elif (tcond == TerminationCondition.maxIterations):
+                flag = 2
+            else:
+                flag = 3
+            return flag
+
+
 class PLEpy:
 
-    def __init__(self, model, pnames, solver='ipopt', solver_kwds={},
+    def __init__(self, model, pnames: list, solver='ipopt', solver_kwds={},
                  tee=False, dae=None, dae_kwds={}, presolve=False,
                  multistart=None, multi_kwds={}):
         # Define solver & options
@@ -116,19 +133,19 @@ class PLEpy:
         else:
             self.multistart = False
 
-    def getval(self, pname):
+    def getval(self, pname: str):
         if self.pindexed[pname]:
             return self.plist[pname].get_values()
         else:
             return value(self.plist[pname])
 
-    def setval(self, pname, val):
+    def setval(self, pname: str, val):
         if self.pindexed[pname]:
             self.plist[pname].set_values(val)
         else:
             self.plist[pname].set_value(val)
 
-    def step_CI(self, pname, idx=None, pop=False, dr='up', stepfrac=0.01):
+    def step_CI(self, pname: str, idx=None, pop=False, dr='up', stepfrac=0.01):
         # function for stepping in a single direction
 
         def pprint(pname, inum, ierr, ipval, istep, iflag=0, ifreq=20):
@@ -398,8 +415,135 @@ class PLEpy:
                 print('{:s} set to {:.4g}'.format(dB, pardr))
                 return pardr, states_dict, vdict, obj_dict, flag_dict
 
-    def get_PL(self, n=20, min_step=1e-3, dtol=0.2):
-    
+    def get_PL(self, n: int=20, min_step: float=1e-3, dtol: float=0.2):
+        pass
+
+    def m_eval(self, pname: str, pardr, idx=None):
+        for p in self.pnames:
+            self.setval(p, self.popt[p])
+        if idx is not None:
+            self.plist[pname][idx].set_value(pardr)
+        else:
+            self.plist[pname].set_value(pardr)
+        return self.solver.solve(self.m)
+
+    def bsearch(self, pname: str, clevel, acc, direct: int=1) -> float:
+        """Binary search for confidence limit
+        Args
+        ----
+        pname : str
+            parameter name
+        
+        Keywords
+        --------
+        direct : int, optional
+            direction to search (0=downwards, 1=upwards), by default 1
+        
+        Returns
+        -------
+        float
+            value of parameter bound
+        """
+        # manually change parameter of interest
+        self.plist[pname].fix()
+
+        # Initialize values based on direction
+        x_out = self.pbounds[pname][direct]
+        x_in = self.popt[pname]
+        x_mid = x_out
+        if direct:
+            x_high = x_out
+            x_low = x_in
+            plc = 'upper'
+            puc = 'Upper'
+            no_lim = np.inf
+        else:
+            x_high = x_in
+            x_low = x_out
+            plc = 'lower'
+            puc = 'Lower'
+            no_lim = -np.inf
+        
+        # Print search info
+        print(' '*80)
+        print('Parameter: {:s}'.format(pname))
+        print('Bound: {:s}'.format(puc))
+        print(' '*80)
+        ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
+
+        # find outermost feasible value
+        r_mid = self.m_eval(pname, x_mid)
+        fcheck = sflag(r_mid)
+        self.m.solutions.load_from(r_mid)
+        err = np.log(value(self.m.obj))
+        if fcheck == 0 and err < clevel:
+            pCI = no_lim
+            print('No %s CI!' % (plc))
+        else:
+            fiter = 0
+            while (fcheck == 1 or err < clevel) and ctol > 0.0:
+                print('f_iter: %i, x_high: %f, x_low: %f'
+                        % (fiter, x_high, x_low))
+                ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
+                x_mid = 0.5*(x_high + x_low)
+                r_mid = self.m_eval(pname, x_mid)
+                fcheck = sflag(r_mid)
+                if fcheck == 1:
+                    x_out = float(x_mid)
+                self.m.solutions.load_from(r_mid)
+                err = np.log(value(self.m.obj))
+                if fcheck == 0 and err < clevel:
+                    x_in = float(x_mid)
+                if direct:
+                    x_high = x_out
+                    x_low = x_in
+                else:
+                    x_high = x_in
+                    x_low = x_out
+                fiter += 1
+            # if convergence reached, there is no upper CI
+            if ctol == 0.0:
+                pCI = no_lim
+                print('No %s CI!' % (plc))
+            # otherwise, find the upper CI between max feasible pt and
+            # optimal solution using binary search
+            else:
+                x_out = float(x_mid)
+                if direct:
+                    x_high = x_out
+                    x_low = x_in
+                else:
+                    x_high = x_in
+                    x_low = x_out
+                biter = 0
+                while ctol > 0.0:
+                    print('b_iter: %i, x_high: %f, x_low: %f'
+                            % (biter, x_high, x_low))
+                    ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
+                    x_mid = 0.5*(x_high + x_low)
+                    r_mid = self.m_eval(pname, x_mid)
+                    fcheck = sflag(r_mid)
+                    self.m.solutions.load_from(r_mid)
+                    err = np.log(value(self.m.obj))
+                    biter += 1
+                    if fcheck == 1:
+                        x_out = float(x_mid)
+                    elif err > clevel:
+                        x_out = float(x_mid)
+                    else:
+                        x_in = float(x_mid)
+                    if direct:
+                        x_high = x_out
+                        x_low = x_in
+                    else:
+                        x_high = x_in
+                        x_low = x_out
+                pCI = sigfig(x_mid, acc)
+                print('%s CI of %f found!' % (puc, pCI))
+        self.setval(pname, self.popt[pname])
+        self.plist[pname].free()
+        return pCI
+
     def get_clims(self, alpha=0.05, acc=3):
         """Get confidence limits of parameters
         Keywords
@@ -420,18 +564,76 @@ class PLEpy:
 
         # Get upper & lower bounds for unindexed parameters
         for pname in filter(lambda x: not self.pindexed[x], self.pnames):
-            # manually change parameter of interest
-            self.plist[pname].fix()
+            parlb[pname] = self.bsearch(pname, clevel, acc, direct=0)
+            parub[pname] = self.bsearch(pname, clevel, acc, direct=1)
+            # # manually change parameter of interest
+            # self.plist[pname].fix()
 
-            # search for upper bound
-            print(' '*80)
-            print('Parameter: {:s}'.format(pname))
-            print('Bound: Upper')
-            print(' '*80)
-            if idx is None:
-                pmax = self.pbounds[pname][1]
-            else:
-                pmax = self.pbounds[pname][idx][1]
+            # # search for upper bound
+            # print(' '*80)
+            # print('Parameter: {:s}'.format(pname))
+            # print('Bound: Upper')
+            # print(' '*80)
+            # x_high = self.pbounds[pname][1]
+            # x_low = self.popt[pname]
+            # x_mid = self.pbounds[pname][1]
+            # ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
+
+            # # find maximum feasible value
+            # r_mid = self.m_eval(pname, x_mid)
+            # fcheck = sflag(r_mid)
+            # self.m.solutions.load_from(r_mid)
+            # err = np.log(value(self.m.obj))
+            # if fcheck == 0 and err < clevel:
+            #     parub[pname] = np.inf
+            #     print('No upper CI!')
+            # else:
+            #     fiter = 0
+            #     while (fcheck == 1 or err < clevel) and ctol > 0.0:
+            #         print('f_iter: %i, x_high: %f, x_low: %f'
+            #               % (fiter, x_high, x_low))
+            #         ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
+            #         x_mid = 0.5*(x_high + x_low)
+            #         r_mid = self.m_eval(pname, x_mid)
+            #         fcheck = sflag(r_mid)
+            #         if fcheck == 1:
+            #             x_high = float(x_mid)
+            #         self.m.solutions.load_from(r_mid)
+            #         err = np.log(value(self.m.obj))
+            #         if fcheck == 0 and err < clevel:
+            #             x_low = float(x_mid)
+            #         fiter += 1
+            #     # if convergence reached, there is no upper CI
+            #     if ctol == 0.0:
+            #         parub[pname] = np.inf
+            #         print('No upper CI!')
+            #     # otherwise, find the upper CI between max feasible pt and
+            #     # optimal solution using binary search
+            #     else:
+            #         x_high = float(x_mid)
+            #         biter = 0
+            #         while ctol > 0.0:
+            #             print('b_iter: %i, x_high: %f, x_low: %f'
+            #                   % (biter, x_high, x_low))
+            #             ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
+            #             x_mid = 0.5*(x_high + x_low)
+            #             r_mid = self.m_eval(pname, x_mid)
+            #             fcheck = sflag(r_mid)
+            #             self.m.solutions.load_from(r_mid)
+            #             err = np.log(value(self.m.obj))
+            #             biter += 1
+            #             if fcheck == 1:
+            #                 x_high = float(x_mid)
+            #             elif err > clevel:
+            #                 x_high = float(x_mid)
+            #             else:
+            #                 x_low = float(x_mid)
+            #         parub[pname] = sigfig(x_mid, acc)
+            #         print('Upper CI of %f found!' % (parub[pname]))
+            # self.setval(pname, self.popt[pname])
+            # self.plist[pname].free()
+        self.parub = parub
+        self.parlb = parlb
             
 
     def ebarplots(self):
