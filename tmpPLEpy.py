@@ -145,278 +145,155 @@ class PLEpy:
         else:
             self.plist[pname].set_value(val)
 
-    def step_CI(self, pname: str, idx=None, pop=False, dr='up', stepfrac=0.01):
-        # function for stepping in a single direction
+    def get_PL(self, pnames='all', n: int=20, min_step: float=1e-3,
+               dtol: float=0.2):
+        """Once bounds are found, calculate likelihood profiles for each
+        parameter
 
-        def pprint(pname, inum, ierr, ipval, istep, iflag=0, ifreq=20):
-            # function for iteration printing
-            dash = '='*80
-            head = ' Iter. | Error | Par. Value | Stepsize | Par. Name | Flag'
-            iform = (' {:^5d} | {:^5.3f} | {:>10.4g} | {:>8.3g} | {:<9s} |'
-                     ' {:<27d}')
-            iprint = iform.format(inum, ierr, ipval, istep, pname, iflag)
-            if inum % ifreq == 0:
-                print(*[dash, head, dash], sep='\n')
-                print(iprint)
+        Args
+        ----
+        pnames: list or str
+            name(s) of parameters to generate likelihood profiles for, or 'all'
+            to generate profiles for all model parameters, by default 'all'
+        
+        Keywords
+        --------
+        n : int, optional
+            minimum number of discretization points between optimum and each
+            parameter bound, by default 20
+        min_step : float, optional
+            minimum allowable difference between two discretization points,
+            by default 1e-3
+        dtol : float, optional
+            maximum error change between two points, by default 0.2
+        """
+        if type(pnames) == str:
+            if pnames == 'all':
+                pnames = list(self.pnames)
             else:
-                print(iprint)
-
-        def sflag(results):
-            # determine solver status for iteration & assign flag
-            stat = results.solver.status
-            tcond = results.solver.termination_condition
-            if ((stat == SolverStatus.ok) and
-                    (tcond == TerminationCondition.optimal)):
-                flag = 0
-            elif (tcond == TerminationCondition.infeasible):
-                flag = 1
-            elif (tcond == TerminationCondition.maxIterations):
-                flag = 2
-            else:
-                flag = 3
-            return flag
-
-        def _multistep(pname, pardr, idx=None):
-
-            def get_initial_guesses(pname, pardr, idx=None):
-                import itertools as it
-
-                # Create temporary multistart dict, replacing parameter being
-                # profiled with value of next step
-                tmpstart = dict(self.multistart)
-                if idx is not None:
-                    tmpstart[pname][idx] = [pardr]
-                else:
-                    tmpstart[pname] = [pardr]
-                # Get product of initial guesses within indexed variables
+                pnames = [pnames]
+        PLdict = {}
+        for pname in pnames:
+            print('Profiling %s...' % (pname))
+            emsg = ("Parameter confidence limits must be determined prior to "
+                    "calculating likelihood profile.\nTry running "
+                    ".get_clims() method first.")
+            assert self.parlb[pname] is not None, emsg
+            assert self.parub[pname] is not None, emsg
+            parPL = {}
+            self.plist[pname].fix()
+            xopt = self.popt[pname]
+            xlb = self.parlb[pname]
+            xub = self.parub[pname]
+            # do upper discretization first
+            print('Going up...')
+            x0 = np.linspace(xopt, xub, n+2, endpoint=True)
+            print('x0:', x0)
+            for x in x0:
+                xdict = {} 
+                rx = self.m_eval(pname, x)
+                xdict['flag'] = sflag(rx)
+                self.m.solutions.load_from(rx)
+                xdict['obj'] = np.log(value(self.m.obj))
                 for p in self.pnames:
-                    if self.pindexed[p]:
-                        k0 = [tmpstart[p][i] for i in sorted(self.pidx[p])]
-                        k = list(it.product(*k0))
-                        tmpstart[p] = k
-                # Get product of intial guesses
-                k0 = [tmpstart[i] for i in sorted(self.pnames)]
-                k = list(it.product(*k0))
-                # Convert back to dictionary with each entry as a dictionary of
-                # initial guesses for each parameter
-                mstarts = {i: {x: y for x, y in zip(sorted(self.pnames), k[i])}
-                           for i in range(len(k))}
-                # Expand entries for indexed variables
+                    xdict[p] = self.getval(p)
+                parPL[x] = xdict
+            x_out = x0[1:]
+            x_in = x0[:-1]
+            dx = x_out - x_in
+            y0 = np.array([parPL[x]['obj'] for x in x0])
+            print('y0:', y0)
+            y_out = y0[1:]
+            y_in = y0[:-1]
+            dy = y_out - y_in
+            ierr = [(i > dtol and j > min_step)
+                             for i, j in zip(dy, dx)]
+            print('ierr:', ierr)
+            itr = 0
+            while len(ierr) != 0:
+                print('iter: %i' % (itr))
+                x_oerr = np.array([j for i, j in zip(ierr, x_out) if i])
+                x_ierr = np.array([j for i, j in zip(ierr, x_in) if i])
+                x_mid = 0.5*(x_oerr + x_ierr)
+                for x in x_mid:
+                    xdict = {} 
+                    rx = self.m_eval(pname, x)
+                    xdict['flag'] = sflag(rx)
+                    self.m.solutions.load_from(rx)
+                    xdict['obj'] = np.log(value(self.m.obj))
+                    for p in self.pnames:
+                        xdict[p] = self.getval(p)
+                    parPL[x] = xdict
+                x0 = np.array(sorted(set([*x_oerr, *x_mid, *x_ierr])))
+                print('x0:', x0)
+                x_out = x0[1:]
+                x_in = x0[:-1]
+                dx = x_out - x_in
+                y0 = np.array([parPL[x]['obj'] for x in x0])
+                print('y0:', y0)
+                y_out = y0[1:]
+                y_in = y0[:-1]
+                dy = y_out - y_in
+                ierr = [(i > dtol and j > min_step)
+                                 for i, j in zip(dy, dx)]
+                print('ierr:', ierr)
+                itr += 1
+            # do lower discretization now
+            print('Going down...')
+            x0 = np.linspace(xlb, xopt, n+2, endpoint=True)
+            print('x0:', x0)
+            for x in x0:
+                xdict = {} 
+                rx = self.m_eval(pname, x)
+                xdict['flag'] = sflag(rx)
+                self.m.solutions.load_from(rx)
+                xdict['obj'] = np.log(value(self.m.obj))
                 for p in self.pnames:
-                    if self.pindexed[p]:
-                        keys = sorted(self.pidx[p])
-                        for i in list(mstarts.keys()):
-                            m = {keys[j]: mstarts[i][p][j]
-                                 for j in range(len(keys))}
-                            mstarts[i][p] = m
-                return mstarts
-
-            if idx is not None:
-                init_guesses = get_initial_guesses(pname, pardr, idx)
-            else:
-                init_guesses = get_initial_guesses(pname, pardr)
-
-            if self.multi_opts['max_iter']:
-                # Do multistart max iterations for each inital guess
-                objN = {}
-                if 'max_iter' in self.solver.options.keys():
-                    orig_iters = int(self.solver.options['max_iter'])
-                else:
-                    orig_iters = 3000
-                self.solver.options['max_iter'] = self.multi_opts['max_iter']
-                for i in list(init_guesses.keys()):
-                    ig = init_guesses[i]
+                    xdict[p] = self.getval(p)
+                parPL[x] = xdict
+            x_out = x0[:-1]
+            x_in = x0[1:]
+            dx = x_out - x_in
+            y0 = np.array([parPL[x]['obj'] for x in x0])
+            print('y0:', y0)
+            y_out = y0[:-1]
+            y_in = y0[1:]
+            dy = y_out - y_in
+            ierr = [(i > dtol and j > min_step)
+                             for i, j in zip(dy, dx)]
+            print('ierr:', ierr)
+            itr = 0
+            while len(ierr) != 0:
+                print('iter: %i' % (itr))
+                x_oerr = np.array([j for i, j in zip(ierr, x_out) if i])
+                x_ierr = np.array([j for i, j in zip(ierr, x_in) if i])
+                x_mid = 0.5*(x_oerr + x_ierr)
+                for x in x_mid:
+                    xdict = {} 
+                    rx = self.m_eval(pname, x)
+                    xdict['flag'] = sflag(rx)
+                    self.m.solutions.load_from(rx)
+                    xdict['obj'] = np.log(value(self.m.obj))
                     for p in self.pnames:
-                        self.setval(p, ig[p])
-                    results = self.solver.solve(self.m)
-                    self.m.solutions.load_from(results)
-                    objN[i] = value(self.m.obj)
-                sort_i = sorted(objN, key=lambda k: objN[k])
-
-                # Continue solving best 3 candidates
-                self.solver.options['max_iter'] = orig_iters
-                results = []
-                objs = []
-                topN = sort_i[:self.multi_opts['best_n']]
-                for i in topN:
-                    ig = init_guesses[i]
-                    for p in self.pnames:
-                        self.setval(p, ig[p])
-                    res_i = self.solver.solve(self.m)
-                    results.append(res_i)
-                    self.m.solutions.load_from(res_i)
-                    objs.append(value(self.m.obj))
-                results = sorted(results, key=lambda x: objs[results.index(x)])
-            else:
-                results = []
-                objs = []
-                for i in list(init_guesses.keys()):
-                    ig = init_guesses[i]
-                    for p in self.pnames:
-                        self.setval(p, ig[p])
-                    res_i = self.solver.solve(self.m)
-                    results.append(res_i)
-                    self.m.solutions.load_from(res_i)
-                    objs.append(value(self.m.obj))
-                results = sorted(results, key=lambda x: objs[results.index(x)])
-            return results[0]
-
-        def _singlestep(pname, pardr, idx=None):
-            for p in self.pnames:
-                self.setval(p, self.popt[p])
-            if idx is not None:
-                self.plist[pname][idx].set_value(pardr)
-            else:
-                self.plist[pname].set_value(pardr)
-
-            results = self.solver.solve(self.m)
-            return results
-
-        # for stepping towards upper bound
-        if dr == 'up':
-            # for indexed variables...
-            if idx is not None:
-                if self.pbounds[pname][idx][1]:
-                    bound = self.pbounds[pname][idx][1]
-                else:
-                    bound = float('Inf')
-            # for unindexed variables
-            elif self.pbounds[pname][1]:
-                bound = self.pbounds[pname][1]
-            else:
-                bound = float('Inf')
-            dB = 'UB'
-            drer = 'upper'
-            bd_eps = 1.0e-5
-
-        # for stepping towards lower bound
-        else:
-            # for indexed variables...
-            if idx is not None:
-                if self.pbounds[pname][idx][0]:
-                    bound = self.pbounds[pname][idx][0]
-                else:
-                    bound = 1e-10
-            # for unindexed variables...
-            elif self.pbounds[pname][0]:
-                bound = self.pbounds[pname][0]
-            else:
-                bound = 1e-10
-            dB = 'LB'
-            drer = 'lower'
-            stepfrac = -stepfrac
-            bd_eps = -1.0e-5
-
-        states_dict = {}    # currently does nothing
-        vdict = {}  # dictionary for all parameter values at each step
-        obj_dict = {}  # dictionary for objective values at each step
-        flag_dict = {}  # dictionary for solver flag at each step
-
-        def_SF = float(stepfrac)  # default stepfrac
-        ctol = self.ctol    # max number of steps
-        _obj_CI = value(self.obj)   # original objective value
-
-        i = 0
-        err = 0.0
-        pstep = 0.0
-        df = 1.0
-        etol = chi2.isf(self.alpha, df)     # error tolerance for given alpha
-        if idx is not None:
-            popt = self.popt[pname][idx]    # parameter value at optimum
-            prtname = '_'.join([pname, str(idx)])   # printed parameter name
-        else:
-            popt = self.popt[pname]
-            prtname = str(pname)
-        pardr = float(popt)
-        nextdr = pardr - bd_eps
-        if dr == 'up':
-            bdreach = nextdr > bound
-        else:
-            bdreach = nextdr < bound
-
-        while i < ctol and err <= etol and not bdreach:
-            pstep = pstep + stepfrac*popt    # stepsize
-            pardr = popt + pstep     # next parameter value
-            iname = '_'.join([prtname, dr, str(i)])
-            try:
-                if self.multistart:
-                    if idx is None:
-                        riter = _multistep(pname, pardr)
-                    else:
-                        riter = _multistep(pname, pardr, idx=idx)
-                else:
-                    if idx is None:
-                        riter = _singlestep(pname, pardr)
-                    else:
-                        riter = _singlestep(pname, pardr, idx=idx)
-                self.m.solutions.load_from(riter)
-                iflag = sflag(riter)
-
-                err = 2*(np.log(value(self.m.obj)) - np.log(_obj_CI))
-                vdict[iname] = {k: self.getval(k) for k in self.pnames}
-                obj_dict[iname] = value(self.m.obj)
-                flag_dict[iname] = iflag
-
-                # adjust step size if convergence slow
-                if i > 0:
-                    prname = '_'.join([prtname, dr, str(i-1)])
-                    d = np.abs((np.log(obj_dict[prname])
-                                - np.log(obj_dict[iname])))
-                    d /= np.abs(np.log(obj_dict[prname]))*stepfrac
-                else:
-                    d = err
-
-                if d <= 0.01:  # if obj change too small, increase stepsize
-                    stepfrac = 1.05*stepfrac
-                else:
-                    stepfrac = def_SF
-
-                # print iteration info
-                pprint(prtname, i, err, pardr, stepfrac*popt, iflag)
-                if err > etol:
-                    print('Reached %s CI!' % (drer))
-                    print('{:s} = {:.4g}'.format(dB, pardr))
-                    return pardr, states_dict, vdict, obj_dict, flag_dict
-                elif i == ctol-1:
-                    print('Maximum steps taken!')
-                    if dr == 'up':
-                        return np.inf, states_dict, vdict, obj_dict, flag_dict
-                    else:
-                        return -np.inf, states_dict, vdict, obj_dict, flag_dict
-
-                nextdr += popt*stepfrac
-                if dr == 'up':
-                    bdreach = nextdr > bound
-                else:
-                    bdreach = nextdr < bound
-
-                if bdreach:
-                    print('Reached parameter %s bound!' % (drer))
-                    print('{:s} = {:.4g}'.format(dB, pardr))
-                    return pardr, states_dict, vdict, obj_dict, flag_dict
-                i += 1
-            except Exception as e:
-                z = e
-                print(z)
-                if i > 0:
-                    prname = '_'.join([prtname, dr, str(i-1)])
-                    iname = '_'.join([prtname, dr, str(i)])
-                    if idx is not None:
-                        pardr = vdict[prname][pname][idx]
-                    else:
-                        pardr = vdict[prname][pname]
-                    states_dict.pop(iname, None)
-                    vdict.pop(iname, None)
-                    obj_dict.pop(iname, None)
-                else:
-                    pardr = popt
-                i = ctol
-                print('Error occured!')
-                print('{:s} set to {:.4g}'.format(dB, pardr))
-                return pardr, states_dict, vdict, obj_dict, flag_dict
-
-    def get_PL(self, n: int=20, min_step: float=1e-3, dtol: float=0.2):
-        pass
+                        xdict[p] = self.getval(p)
+                    parPL[x] = xdict
+                x0 = np.array(sorted(set([*x_oerr, *x_mid, *x_ierr])))
+                print('x0:', x0)
+                x_out = x0[:-1]
+                x_in = x0[1:]
+                dx = x_out - x_in
+                y0 = np.array([parPL[x]['obj'] for x in x0])
+                print('y0:', y0)
+                y_out = y0[:-1]
+                y_in = y0[1:]
+                dy = y_out - y_in
+                ierr = [(i > dtol and j > min_step)
+                                 for i, j in zip(dy, dx)]
+                print('ierr:', ierr)
+                itr += 1
+            PLdict[pname] = parPL
+            self.plist[pname].free()
+        self.PLdict = PLdict
 
     def m_eval(self, pname: str, pardr, idx=None):
         for p in self.pnames:
@@ -561,77 +438,10 @@ class PLEpy:
 
         parub = dict(self.popt)
         parlb = dict(self.popt)
-
         # Get upper & lower bounds for unindexed parameters
         for pname in filter(lambda x: not self.pindexed[x], self.pnames):
             parlb[pname] = self.bsearch(pname, clevel, acc, direct=0)
             parub[pname] = self.bsearch(pname, clevel, acc, direct=1)
-            # # manually change parameter of interest
-            # self.plist[pname].fix()
-
-            # # search for upper bound
-            # print(' '*80)
-            # print('Parameter: {:s}'.format(pname))
-            # print('Bound: Upper')
-            # print(' '*80)
-            # x_high = self.pbounds[pname][1]
-            # x_low = self.popt[pname]
-            # x_mid = self.pbounds[pname][1]
-            # ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
-
-            # # find maximum feasible value
-            # r_mid = self.m_eval(pname, x_mid)
-            # fcheck = sflag(r_mid)
-            # self.m.solutions.load_from(r_mid)
-            # err = np.log(value(self.m.obj))
-            # if fcheck == 0 and err < clevel:
-            #     parub[pname] = np.inf
-            #     print('No upper CI!')
-            # else:
-            #     fiter = 0
-            #     while (fcheck == 1 or err < clevel) and ctol > 0.0:
-            #         print('f_iter: %i, x_high: %f, x_low: %f'
-            #               % (fiter, x_high, x_low))
-            #         ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
-            #         x_mid = 0.5*(x_high + x_low)
-            #         r_mid = self.m_eval(pname, x_mid)
-            #         fcheck = sflag(r_mid)
-            #         if fcheck == 1:
-            #             x_high = float(x_mid)
-            #         self.m.solutions.load_from(r_mid)
-            #         err = np.log(value(self.m.obj))
-            #         if fcheck == 0 and err < clevel:
-            #             x_low = float(x_mid)
-            #         fiter += 1
-            #     # if convergence reached, there is no upper CI
-            #     if ctol == 0.0:
-            #         parub[pname] = np.inf
-            #         print('No upper CI!')
-            #     # otherwise, find the upper CI between max feasible pt and
-            #     # optimal solution using binary search
-            #     else:
-            #         x_high = float(x_mid)
-            #         biter = 0
-            #         while ctol > 0.0:
-            #             print('b_iter: %i, x_high: %f, x_low: %f'
-            #                   % (biter, x_high, x_low))
-            #             ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
-            #             x_mid = 0.5*(x_high + x_low)
-            #             r_mid = self.m_eval(pname, x_mid)
-            #             fcheck = sflag(r_mid)
-            #             self.m.solutions.load_from(r_mid)
-            #             err = np.log(value(self.m.obj))
-            #             biter += 1
-            #             if fcheck == 1:
-            #                 x_high = float(x_mid)
-            #             elif err > clevel:
-            #                 x_high = float(x_mid)
-            #             else:
-            #                 x_low = float(x_mid)
-            #         parub[pname] = sigfig(x_mid, acc)
-            #         print('Upper CI of %f found!' % (parub[pname]))
-            # self.setval(pname, self.popt[pname])
-            # self.plist[pname].free()
         self.parub = parub
         self.parlb = parlb
             

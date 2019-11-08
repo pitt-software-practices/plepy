@@ -6,6 +6,7 @@ from pyomo.dae import ContinuousSet, DerivativeVar
 from pyomo.environ import *
 sys.path.append("../")
 from tmpPLEpy import *
+from helper_funcs import load_json
 
 ######### Shout out to Michelle for lending me your Pyomo model :) #########
 
@@ -142,7 +143,16 @@ pl_inst = PLEpy(model, ['k1f', 'k2', 'k3', 'Platelet'])
 
 # Get profile likelihood estimates and (potentially) confidence intervals
 # pl_inst.get_CI(maxSteps=1000, stepfrac=0.05)
-pl_inst.get_clims()
+# pl_inst.get_clims()
+pl_inst.parlb = load_json('tmp_parlb.json')
+pl_inst.parub = load_json('tmp_parub.json')
+pl_inst.get_PL('k2')
+x = sorted(pl_inst.PLdict['k2'].keys())
+y = [pl_inst.PLdict['k2'][i]['obj'] for i in x]
+plt.plot(x, y, ls='None', marker='o')
+plt.xlabel('k2')
+plt.ylabel('ln(Objective)')
+plt.show()
 
 # Save results to .json file
 # pl_inst.to_json('example_pl.json')
