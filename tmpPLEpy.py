@@ -167,150 +167,148 @@ class PLEpy:
         dtol : float, optional
             maximum error change between two points, by default 0.2
         """
-        if type(pnames) == str:
+
+        def inner_loop(xopt, xb, direct=1) -> dict:
+            pdict = {}
+            if direct:
+                print('Going up...')
+                x0 = np.linspace(xopt, xb, n+2, endpoint=True)
+            else:
+                print('Going down...')
+                x0 = np.linspace(xb, xopt, n+2, endpoint=True)
+            print('x0:', x0)
+            # evaluate objective at each discretization point
+            for x in x0:
+                xdict = {} 
+                rx = self.m_eval(pname, x)
+                xdict['flag'] = sflag(rx)
+                self.m.solutions.load_from(rx)
+                xdict['obj'] = np.log(value(self.m.obj))
+                # store values of other parameters at each point
+                for p in self.pnames:
+                    xdict[p] = self.getval(p)
+                pdict[x] = xdict
+            if direct:
+                x_out = x0[1:]
+                x_in = x0[:-1]
+            else:
+                x_out = x0[:-1]
+                x_in = x0[1:]
+            # calculate magnitude of step sizes
+            dx = x_out - x_in
+            y0 = np.array([pdict[x]['obj'] for x in x0])
+            print('y0:', y0)
+            if direct:
+                y_out = y0[1:]
+                y_in = y0[:-1]
+            else:
+                y_out = y0[:-1]
+                y_in = y0[1:]
+            # calculate magnitude of objective value changes between each step
+            dy = y_out - y_in
+            # pull indices where objective value change is greater than
+            # threshold value (dtol) and step size is greater than minimum
+            ierr = [(i > dtol and j > min_step)
+                             for i, j in zip(dy, dx)]
+            print('ierr:', ierr)
+            itr = 0
+            # For intervals of large change (above dtol), calculate values at
+            # midpoint. Repeat until no large changes or minimum step size
+            # reached.
+            while len(ierr) != 0:
+                print('iter: %i' % (itr))
+                x_oerr = np.array([j for i, j in zip(ierr, x_out) if i])
+                x_ierr = np.array([j for i, j in zip(ierr, x_in) if i])
+                x_mid = 0.5*(x_oerr + x_ierr)
+                for x in x_mid:
+                    xdict = {} 
+                    rx = self.m_eval(pname, x)
+                    xdict['flag'] = sflag(rx)
+                    self.m.solutions.load_from(rx)
+                    xdict['obj'] = np.log(value(self.m.obj))
+                    for p in self.pnames:
+                        xdict[p] = self.getval(p)
+                    pdict[x] = xdict
+                # get all parameter values involved in intervals of interest
+                x0 = np.array(sorted(set([*x_oerr, *x_mid, *x_ierr])))
+                print('x0:', x0)
+                x_out = x0[1:]
+                x_in = x0[:-1]
+                # calculate magnitude of step sizes
+                dx = x_out - x_in
+                y0 = np.array([pdict[x]['obj'] for x in x0])
+                print('y0:', y0)
+                y_out = y0[1:]
+                y_in = y0[:-1]
+                # calculate magnitude of objective value change between each
+                # step
+                dy = y_out - y_in
+                # pull indices where objective value change is greater than
+                # threshold value (dtol) and step size is greater than minimum
+                ierr = [(i > dtol and j > min_step)
+                                 for i, j in zip(dy, dx)]
+                print('ierr:', ierr)
+                itr += 1
+            return pdict
+
+        if isinstance(pnames, str):
             if pnames == 'all':
                 pnames = list(self.pnames)
             else:
                 pnames = [pnames]
+
+        # master dictionary for all parameter likelihood profiles
         PLdict = {}
+        # generate profiles for parameters indicated
         for pname in pnames:
             print('Profiling %s...' % (pname))
+            # make sure upper and lower confidence limits have been specified
+            # or solved for using get_clims()
             emsg = ("Parameter confidence limits must be determined prior to "
                     "calculating likelihood profile.\nTry running "
                     ".get_clims() method first.")
             assert self.parlb[pname] is not None, emsg
             assert self.parub[pname] is not None, emsg
-            parPL = {}
+
             self.plist[pname].fix()
             xopt = self.popt[pname]
             xlb = self.parlb[pname]
             xub = self.parub[pname]
-            # do upper discretization first
-            print('Going up...')
-            x0 = np.linspace(xopt, xub, n+2, endpoint=True)
-            print('x0:', x0)
-            for x in x0:
-                xdict = {} 
-                rx = self.m_eval(pname, x)
-                xdict['flag'] = sflag(rx)
-                self.m.solutions.load_from(rx)
-                xdict['obj'] = np.log(value(self.m.obj))
-                for p in self.pnames:
-                    xdict[p] = self.getval(p)
-                parPL[x] = xdict
-            x_out = x0[1:]
-            x_in = x0[:-1]
-            dx = x_out - x_in
-            y0 = np.array([parPL[x]['obj'] for x in x0])
-            print('y0:', y0)
-            y_out = y0[1:]
-            y_in = y0[:-1]
-            dy = y_out - y_in
-            ierr = [(i > dtol and j > min_step)
-                             for i, j in zip(dy, dx)]
-            print('ierr:', ierr)
-            itr = 0
-            while len(ierr) != 0:
-                print('iter: %i' % (itr))
-                x_oerr = np.array([j for i, j in zip(ierr, x_out) if i])
-                x_ierr = np.array([j for i, j in zip(ierr, x_in) if i])
-                x_mid = 0.5*(x_oerr + x_ierr)
-                for x in x_mid:
-                    xdict = {} 
-                    rx = self.m_eval(pname, x)
-                    xdict['flag'] = sflag(rx)
-                    self.m.solutions.load_from(rx)
-                    xdict['obj'] = np.log(value(self.m.obj))
-                    for p in self.pnames:
-                        xdict[p] = self.getval(p)
-                    parPL[x] = xdict
-                x0 = np.array(sorted(set([*x_oerr, *x_mid, *x_ierr])))
-                print('x0:', x0)
-                x_out = x0[1:]
-                x_in = x0[:-1]
-                dx = x_out - x_in
-                y0 = np.array([parPL[x]['obj'] for x in x0])
-                print('y0:', y0)
-                y_out = y0[1:]
-                y_in = y0[:-1]
-                dy = y_out - y_in
-                ierr = [(i > dtol and j > min_step)
-                                 for i, j in zip(dy, dx)]
-                print('ierr:', ierr)
-                itr += 1
-            # do lower discretization now
-            print('Going down...')
-            x0 = np.linspace(xlb, xopt, n+2, endpoint=True)
-            print('x0:', x0)
-            for x in x0:
-                xdict = {} 
-                rx = self.m_eval(pname, x)
-                xdict['flag'] = sflag(rx)
-                self.m.solutions.load_from(rx)
-                xdict['obj'] = np.log(value(self.m.obj))
-                for p in self.pnames:
-                    xdict[p] = self.getval(p)
-                parPL[x] = xdict
-            x_out = x0[:-1]
-            x_in = x0[1:]
-            dx = x_out - x_in
-            y0 = np.array([parPL[x]['obj'] for x in x0])
-            print('y0:', y0)
-            y_out = y0[:-1]
-            y_in = y0[1:]
-            dy = y_out - y_in
-            ierr = [(i > dtol and j > min_step)
-                             for i, j in zip(dy, dx)]
-            print('ierr:', ierr)
-            itr = 0
-            while len(ierr) != 0:
-                print('iter: %i' % (itr))
-                x_oerr = np.array([j for i, j in zip(ierr, x_out) if i])
-                x_ierr = np.array([j for i, j in zip(ierr, x_in) if i])
-                x_mid = 0.5*(x_oerr + x_ierr)
-                for x in x_mid:
-                    xdict = {} 
-                    rx = self.m_eval(pname, x)
-                    xdict['flag'] = sflag(rx)
-                    self.m.solutions.load_from(rx)
-                    xdict['obj'] = np.log(value(self.m.obj))
-                    for p in self.pnames:
-                        xdict[p] = self.getval(p)
-                    parPL[x] = xdict
-                x0 = np.array(sorted(set([*x_oerr, *x_mid, *x_ierr])))
-                print('x0:', x0)
-                x_out = x0[:-1]
-                x_in = x0[1:]
-                dx = x_out - x_in
-                y0 = np.array([parPL[x]['obj'] for x in x0])
-                print('y0:', y0)
-                y_out = y0[:-1]
-                y_in = y0[1:]
-                dy = y_out - y_in
-                ierr = [(i > dtol and j > min_step)
-                                 for i, j in zip(dy, dx)]
-                print('ierr:', ierr)
-                itr += 1
+            # discretize each half separately
+            parPLup = inner_loop(xopt, xub, direct=1)
+            parPLdn = inner_loop(xopt, xlb, direct=0)
+            # combine results into parameter profile likelihood
+            parPL = {**parPLup, **parPLdn}
             PLdict[pname] = parPL
             self.plist[pname].free()
         self.PLdict = PLdict
 
     def m_eval(self, pname: str, pardr, idx=None):
+        # initialize all parameters at their optimal value (ensure feasibility)
         for p in self.pnames:
             self.setval(p, self.popt[p])
+        # if parameter is indexed, set value of parameter at specified index
+        # to pardr
         if idx is not None:
             self.plist[pname][idx].set_value(pardr)
+        # if parameter is unindexed, set value of parameter to pardr
         else:
             self.plist[pname].set_value(pardr)
+        # evalutate model at this point
         return self.solver.solve(self.m)
 
-    def bsearch(self, pname: str, clevel, acc, direct: int=1) -> float:
+    def bsearch(self, pname: str, clevel: float, acc: int,
+                direct: int=1) -> float:
         """Binary search for confidence limit
         Args
         ----
         pname : str
             parameter name
-        
+        clevel: float
+            value of log of objective function at confidence limit
+        acc: int
+            accuracy in terms of the number of significant figures to consider
+
         Keywords
         --------
         direct : int, optional
@@ -328,47 +326,61 @@ class PLEpy:
         x_out = self.pbounds[pname][direct]
         x_in = self.popt[pname]
         x_mid = x_out
+        # for upper CI search
         if direct:
             x_high = x_out
             x_low = x_in
             plc = 'upper'
             puc = 'Upper'
-            no_lim = np.inf
+            no_lim = self.pbounds[pname][1]
+        # for lower CI search
         else:
             x_high = x_in
             x_low = x_out
             plc = 'lower'
             puc = 'Lower'
-            no_lim = -np.inf
+            no_lim = self.pbounds[pname][0]
         
         # Print search info
         print(' '*80)
         print('Parameter: {:s}'.format(pname))
         print('Bound: {:s}'.format(puc))
         print(' '*80)
+
+        # check convergence criteria
         ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
 
-        # find outermost feasible value
+        # Find outermost feasible value
+        # evaluate at outer bound
         r_mid = self.m_eval(pname, x_mid)
         fcheck = sflag(r_mid)
         self.m.solutions.load_from(r_mid)
         err = np.log(value(self.m.obj))
+        # If solution is feasible and the error is less than the value at the
+        # confidence limit, there is no CI in that direction. Set to bound.
         if fcheck == 0 and err < clevel:
             pCI = no_lim
-            print('No %s CI!' % (plc))
+            print('No %s CI! Setting to %s bound.' % (plc, plc))
         else:
             fiter = 0
+            # If solution is infeasible, find a new value for x_out that is
+            # feasible and above the confidence limit threshold.
             while (fcheck == 1 or err < clevel) and ctol > 0.0:
                 print('f_iter: %i, x_high: %f, x_low: %f'
                         % (fiter, x_high, x_low))
+                # check convergence criteria
                 ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
+                # evaluate at midpoint
                 x_mid = 0.5*(x_high + x_low)
                 r_mid = self.m_eval(pname, x_mid)
                 fcheck = sflag(r_mid)
+                # if infeasible, continue search inward from current midpoint
                 if fcheck == 1:
                     x_out = float(x_mid)
                 self.m.solutions.load_from(r_mid)
                 err = np.log(value(self.m.obj))
+                # if feasbile, but not over CL threshold, continue search
+                # outward from current midpoint
                 if fcheck == 0 and err < clevel:
                     x_in = float(x_mid)
                 if direct:
@@ -381,8 +393,8 @@ class PLEpy:
             # if convergence reached, there is no upper CI
             if ctol == 0.0:
                 pCI = no_lim
-                print('No %s CI!' % (plc))
-            # otherwise, find the upper CI between max feasible pt and
+                print('No %s CI! Setting to %s bound.' % (plc, plc))
+            # otherwise, find the upper CI between outermost feasible pt and
             # optimal solution using binary search
             else:
                 x_out = float(x_mid)
@@ -393,20 +405,26 @@ class PLEpy:
                     x_high = x_in
                     x_low = x_out
                 biter = 0
+                # repeat until convergence criteria is met (x_high = x_low)
                 while ctol > 0.0:
                     print('b_iter: %i, x_high: %f, x_low: %f'
                             % (biter, x_high, x_low))
+                    # check convergence criteria
                     ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
+                    # evaluate at midpoint
                     x_mid = 0.5*(x_high + x_low)
                     r_mid = self.m_eval(pname, x_mid)
                     fcheck = sflag(r_mid)
                     self.m.solutions.load_from(r_mid)
                     err = np.log(value(self.m.obj))
                     biter += 1
+                    # if midpoint infeasible, continue search inward
                     if fcheck == 1:
                         x_out = float(x_mid)
+                    # if midpoint over CL, continue search inward
                     elif err > clevel:
                         x_out = float(x_mid)
+                    # if midpoint under CL, continue search outward
                     else:
                         x_in = float(x_mid)
                     if direct:
@@ -417,6 +435,7 @@ class PLEpy:
                         x_low = x_out
                 pCI = sigfig(x_mid, acc)
                 print('%s CI of %f found!' % (puc, pCI))
+        # reset parameter
         self.setval(pname, self.popt[pname])
         self.plist[pname].free()
         return pCI
@@ -438,10 +457,11 @@ class PLEpy:
 
         parub = dict(self.popt)
         parlb = dict(self.popt)
-        # Get upper & lower bounds for unindexed parameters
+        # Get upper & lower confidence limits for unindexed parameters
         for pname in filter(lambda x: not self.pindexed[x], self.pnames):
             parlb[pname] = self.bsearch(pname, clevel, acc, direct=0)
             parub[pname] = self.bsearch(pname, clevel, acc, direct=1)
+        # TODO: make compatible with indexed parameters
         self.parub = parub
         self.parlb = parlb
             
