@@ -26,6 +26,132 @@ def sflag(results):
             return flag
 
 
+def plot_PL(PLdict, clevel: float, pnames='all', covar='all', join: bool=False,
+            jmax: int=4, disp: str='show', fprefix: str='tmp_fig', **dispkwds):
+    """Plot likelihood profiles for specified parameters
+    
+    Args
+    ----
+    PLdict : dict
+        profile likelihood data generated from PLEpy function, 'get_PL()', has
+        format {'pname': {par_val: {keys: 'obj', 'par1', 'par2', etc.}}}.
+    clevel: float
+        value of objective at confidence threshold
+    
+    Keywords
+    --------
+    pnames : list or str, optional
+        parameter(s) to generate plots for, if 'all' will plot for all keys in
+        outer level of dictionary, by default 'all'
+    covar : list or str, optional
+        parameter(s) to include covariance plots for, if 'all' will include all
+        keys in outer level of dictionary, by default 'all'
+    join : bool, optional
+        place multiple profile likelihood plots on a single figure, by default 
+        False
+    jmax : int, optional
+        if join=True, the maximum number of plots to put in a single figure, by
+        default 4
+    disp: str, optional
+        how to display generated figures, 'show' will run command plt.show(),
+        'save' will save figures using filename prefix specified in fprefix,
+        'None' will not display figures and simply return their handles, by
+        default 'show'
+    fprefix: str, optional
+        filename prefix to give figures if disp='save', by default 'tmp_fig'
+    **dispkwds: optional
+        Keywords to pass to display function (either fig.show() or
+        fig.savefig())
+    """
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
+    cpal = sns.color_palette("deep")
+    # If pnames or covar is a string, convert to appropriate list
+    if isinstance(pnames, str):
+        if pnames == 'all':
+            pnames = list(PLdict.keys())
+        else:
+            pnames = [pnames]
+    if isinstance(covar, str):
+        if covar == 'all':
+            covar = list(PLdict.keys())
+        else:
+            covar = [covar]
+
+    # Initialize counting scheme for tracking figures/subplots
+    npars = len(pnames)
+    assert npars != 0
+    assert jmax > 0
+    if len(covar) > len(cpal):
+        nreps = np.ceil(len(covar)/len(cpal))
+        cpal = nreps*cpal
+    cmap = {covar[i]: cpal[i] for i in range(len(covar))}
+    if join:
+        nfig = int(np.ceil(npars/jmax))
+        # if the number of profiled parameters is not divisible by the maximum
+        # number of subplot columns (jmax), make the first figure generated
+        # contain the remainder
+        ncur = npars % jmax
+        if not ncur:
+            ncur = jmax
+    else:
+        nfig = npars
+        ncur = 1
+    # count number of parameters left to plot
+    nleft = npars
+    # parameter (c) and figure (d) counters
+    c = 0
+    d = 0
+    figs = {}
+    axs = {}
+    while nleft > 0:
+        print('d: %i' % (d))
+        figs[d], axs[d] = plt.subplots(2, ncur, figsize=(3.5*ncur, 9),
+                                       sharex='col', sharey='row')
+        if ncur == 1:
+            axs[d] = np.array([[axs[d][i]] for i in range(2)])
+        for i in range(ncur):
+            print('c: %i' % (c))
+            key = pnames[c]
+            x = sorted([float(j) for j in PLdict[key].keys()])
+            xstr = [str(j) for j in x]
+            # plot objective value in first row
+            y1 = [PLdict[key][j]['obj'] for j in xstr]
+            axs[d][0, i].plot(x, y1, ls='None', marker='o')
+            axs[d][0, i].plot(x, len(x)*[clevel], color='red')
+            # plot other parameter values in second row
+            for p in [p for p in covar if p != key]:
+                yi = [PLdict[key][j][p] for j in xstr]
+                axs[d][1, i].plot(x, yi, ls='None', marker='o', label=p,
+                                  color=cmap[p])
+            axs[d][1, i].legend(loc='best')
+            axs[d][1, i].set_xlabel(key)
+            c += 1
+        axs[d][0, 0].set_ylabel('Objective Value')
+        axs[d][1, 0].set_ylabel('Parameter Values')
+        sns.despine(figs[d])
+        figs[d].tight_layout()
+        # check how many parameters are left to plot
+        nleft = nleft - ncur
+        # since we already plotted the remainder parameters, nleft should be
+        # divisible by jmax now
+        if join:
+            ncur = jmax
+        d += 1
+    # display generated plots and/or return their handles
+    if disp == 'show':
+        for i in range(nfig):
+            figs[i].show(**dispkwds)
+        return figs, axs
+    elif disp == 'save':
+        for i in range(nfig):
+            figs[i].savefig('_'.join([fprefix, str(i)]), **dispkwds)
+        return figs, axs
+    else:
+        return figs, axs
+
+
 class PLEpy:
 
     def __init__(self, model, pnames: list, solver='ipopt', solver_kwds={},
@@ -205,7 +331,7 @@ class PLEpy:
                 y_out = y0[:-1]
                 y_in = y0[1:]
             # calculate magnitude of objective value changes between each step
-            dy = y_out - y_in
+            dy = np.abs(y_out - y_in)
             # pull indices where objective value change is greater than
             # threshold value (dtol) and step size is greater than minimum
             ierr = [(i > dtol and j > min_step)
@@ -242,7 +368,7 @@ class PLEpy:
                 y_in = y0[:-1]
                 # calculate magnitude of objective value change between each
                 # step
-                dy = y_out - y_in
+                dy = np.abs(y_out - y_in)
                 # pull indices where objective value change is greater than
                 # threshold value (dtol) and step size is greater than minimum
                 ierr = [(i > dtol and j > min_step)
@@ -440,15 +566,24 @@ class PLEpy:
         self.plist[pname].free()
         return pCI
 
-    def get_clims(self, alpha=0.05, acc=3):
+    def get_clims(self, pnames='all', alpha: float=0.05, acc: int=3):
         """Get confidence limits of parameters
         Keywords
         --------
+        pnames: list or str, optional
+            name of parameter(s) to get confidence limits for, if 'all' will
+            find limits for all parameters, by default 'all'
         alpha : float, optional
             confidence level, by default 0.05
         acc : int, optional
             accuracy in terms of significant figures, by default 3
         """
+        if isinstance(pnames, str):
+            if pnames == 'all':
+                pnames = list(self.pnames)
+            else:
+                pnames = [pnames]
+
         # Define threshold of confidence level
         etol = chi2.isf(alpha, 1)
         obj0 = np.log(self.obj)
@@ -458,184 +593,13 @@ class PLEpy:
         parub = dict(self.popt)
         parlb = dict(self.popt)
         # Get upper & lower confidence limits for unindexed parameters
-        for pname in filter(lambda x: not self.pindexed[x], self.pnames):
+        for pname in filter(lambda x: not self.pindexed[x], pnames):
             parlb[pname] = self.bsearch(pname, clevel, acc, direct=0)
             parub[pname] = self.bsearch(pname, clevel, acc, direct=1)
         # TODO: make compatible with indexed parameters
+        self.clevel
         self.parub = parub
         self.parlb = parlb
-            
-
-    def ebarplots(self):
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-        
-        nPars = len(self.pnames)
-        sns.set(style='whitegrid')
-        plt.figure(figsize=(11,5))
-        nrow = np.floor(nPars/3)
-        ncol = np.ceil(nPars/nrow)
-        # for future look into making collection of PLEpy objects ->
-        # can put parameter bar plots from different subgroups on single plot
-        for i, pname in enumerate(self.pnames):
-            ax = plt.subplot(nrow, ncol, i+1)
-            pub = self.parub[pname] - self.popt[pname]
-            plb = self.popt[pname] - self.parlb[pname]
-            errs = [[plb], [pub]]
-            ax.bar(1, self.popt[pname], yerr=errs, tick_label=pname)
-            plt.ylabel(pname + ' Value')
-
-        plt.tight_layout()
-        plt.show()
-
-    def plot_simplePL(self, show=True, fname=None):
-        # Plot just the PLs for each parameter
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-
-        df = pd.DataFrame(self.var_dict).T
-        for c in df.columns:
-            if self.pindexed[c]:
-                cols = sorted(['_'.join([c, str(i)]) for i in self.pidx[c]])
-                df[cols] = df[c].apply(pd.Series).sort_index(axis=1)
-                df = df.drop(c, axis=1)
-        objs = pd.Series(self.obj_dict, name='objective').apply(np.log)
-
-        nPars = len(df.columns)
-        sns.set(style='whitegrid')
-        PL_fig = plt.figure(figsize=(11, 6))
-        nrow = np.floor(nPars/3)
-        if nrow < 1:
-            nrow = 1
-        ncol = np.ceil(nPars/nrow)
-
-        i = 1
-        for pname in df.columns:
-            if pname in self.pnames:
-                pkeys = sorted(filter(lambda x: x.split('_')[0] == pname,
-                                      df.index.values))
-            else:
-                pkeys = sorted(filter(lambda x: x.split('_')[:2] == 
-                                      pname.split('_'), df.index.values))
-            pdata = df.loc[pkeys]
-            odata = objs.loc[pkeys]
-            plt_df = pd.concat((pdata, odata), axis=1, sort=True)
-            pdata = pdata.sort_values(pname)
-            plt_df = plt_df.sort_values(pname)
-
-            ax0 = plt.subplot(nrow, ncol, i)
-            plt_df.plot(pname, 'objective', ax=ax0, legend=False)
-            chibd = np.log(self.obj) + chi2.isf(self.alpha, 1)/2
-            if pname in self.pnames:
-                ax0.plot(self.popt[pname], np.log(self.obj), marker='o')
-            else:
-                nm, idx = pname.split('_')
-                ax0.plot(self.popt[nm][int(idx)], np.log(self.obj), marker='o')
-                # come back & change later
-            ax0.plot([min(pdata[pname]), max(pdata[pname])], [chibd, chibd])
-            plt.xlabel(pname + ' Value')
-            plt.ylabel('Objective Value')
-            i += 1
-        plt.tight_layout()
-        if show:
-            plt.show()
-        else:
-            plt.savefig(fname, dpi=600)
-        return PL_fig
-
-    def plot_dual(self, sep_index=True, show=True, fname=None):
-        # This one works :)
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-
-        # Get variable data in plotting format
-        m = ['.', '^', 'x', 's']
-        df = pd.DataFrame(self.var_dict).T
-        fs = pd.Series(self.flag_dict, name='flag')
-        objs = pd.Series(self.obj_dict, name='objective')
-        plt_df = pd.concat((objs, fs), axis=1)
-        for c in df.columns:
-            if self.pindexed[c]:
-                cols = sorted(['_'.join([c, str(i)]) for i in self.pidx[c]])
-                df[cols] = df[c].apply(pd.Series).sort_index(axis=1)
-                df = df.drop(c, axis=1)
-
-        nPars = len(df.columns)
-        sns.set(style='whitegrid')
-        pal = sns.color_palette('cubehelix', nPars)
-        colors = pal.as_hex()
-        clr_dict = dict(zip(df.columns, colors))
-        dual_fig = plt.figure(figsize=(11, 6))
-        nrow = np.floor(nPars/3)*2
-        if nrow < 1:
-            nrow = 2
-        ncol = np.ceil(2*nPars/nrow)
-
-        i = 1
-        for pname in df.columns:
-            if pname in self.pnames:
-                pkeys = sorted(filter(lambda x: x.split('_')[0] == pname,
-                                      df.index.values))
-            else:
-                pkeys = sorted(filter(lambda x: x.split('_')[:2] == 
-                                      pname.split('_'), df.index.values))
-            pdata = df.loc[pkeys]
-            pdata = pdata.sort_values(pname)
-            minrow = pdata.loc[pname + '_up_0']
-            ddf = pdata - minrow
-            ddf[pname] = pdata[pname]
-            pdata = pd.concat((pdata, plt_df.loc[pkeys]), axis=1, sort=True)
-            pdata['ln_obj'] = pdata['objective'].apply(np.log)
-
-            ax0 = plt.subplot(nrow, ncol, i)
-            for j in range(4):
-                ob_df = pdata[pdata.flag == j]
-                try:
-                    ob_df.plot(pname, 'ln_obj', ax=ax0, ls='None',
-                               marker=m[j], color='k', legend=False)
-                except TypeError:
-                    pass
-            chibd = np.log(self.obj) + chi2.isf(self.alpha, 1)/2
-            if pname in self.pnames:
-                ax0.plot(self.popt[pname], np.log(self.obj), marker='x',
-                         markersize=14, color='b')
-            else:
-                nm, idx = pname.split('_')
-                ax0.plot(self.popt[nm][int(idx)], np.log(self.obj), marker='x',
-                         markersize=14, color='b') # come back & change later
-            ax0.plot([min(pdata[pname]), max(pdata[pname])], [chibd, chibd],
-                     color='r')
-            plt.xlabel(pname + ' Value')
-            plt.ylabel('Objective Value')
-
-            # Plot parameter-parameter relationships
-            ax1 = plt.subplot(nrow, ncol, i + ncol)
-            cols = list(filter(lambda x: x != pname, df.columns))
-            for j in range(4):
-                par_df = ddf[pdata.flag == j]
-                try:
-                    if j == 0:
-                        lgnd = True
-                    else:
-                        lgnd = False
-                    par_df.plot(pname, cols, ax=ax1, sharex=ax0, ls='None',
-                                marker=m[j],
-                                color=[clr_dict.get(x, '#000000')
-                                       for x in cols], legend=lgnd)
-                except TypeError:
-                    pass
-            plt.xlabel(pname + ' Value')
-            plt.ylabel('Parameter Change')
-            if i % ncol:
-                i += 1
-            else:
-                i += ncol + 1
-        plt.tight_layout()
-        if show:
-            plt.show()
-        else:
-            plt.savefig(fname, dpi=600, close=True)
-        return dual_fig
 
     def to_json(self, filename):
         # save PL data to a json file
