@@ -151,7 +151,7 @@ model.solutions.load_from(results)
 # save_json(pl_inst.PLdict, 'tmp_PLdict.json')
 PLdict = load_json('tmp_PLdict.json')
 clevel = 5.236
-figs, axs = plot_PL(PLdict, clevel, join=True)
+# figs, axs = plot_PL(PLdict, clevel, join=True, disp='save', fprefix='tmpPlot')
 # x = sorted(pl_inst.PLdict['k2'].keys())
 # y = [pl_inst.PLdict['k2'][i]['obj'] for i in x]
 # plt.plot(x, y, ls='None', marker='o')
