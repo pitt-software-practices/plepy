@@ -1,3 +1,5 @@
 .vscode
+build/*
+dist/*
 data/*
 __pycache__

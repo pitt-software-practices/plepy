@@ -4,7 +4,7 @@ import seaborn as sns
 import sys
 sys.path.append("../")
 from scipy.io import loadmat
-from tmpPLEpy import *
+from PLEpy import *
 from pyomo.environ import *
 from pyomo.dae import *
 

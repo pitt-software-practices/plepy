@@ -1,12 +1,8 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import sys
 from pyomo.dae import ContinuousSet, DerivativeVar
 from pyomo.environ import *
-sys.path.append("../")
-from tmpPLEpy import *
-from helper_funcs import load_json, save_json
+from examples.context import PLEpy
 
 ######### Shout out to Michelle for lending me your Pyomo model :) #########
 
@@ -22,7 +18,6 @@ datadiff = np.diff(np.reshape(data.values, data.shape[0]))
 maxdiff = np.max(np.abs(datadiff))
 indexmax = np.argmax(np.abs(datadiff))*5
 
-plt.close("all")
 if maxdiff >= 1.7 and indexmax >= 200:
     print(':(')
     dataold = data
@@ -139,31 +134,17 @@ model.solutions.load_from(results)
 ############################################################################
 
 # Create instance of PLEpy
-# pl_inst = PLEpy(model, ['k1f', 'k2', 'k3', 'Platelet'])
+pl_inst = PLEpy(model, ['k1f', 'k2', 'k3', 'Platelet'])
 
-# # Get profile likelihood estimates and (potentially) confidence intervals
-# # pl_inst.get_CI(maxSteps=1000, stepfrac=0.05)
-# # pl_inst.get_clims()
-# pl_inst.clevel = 1.921 + np.log(pl_inst.obj)
-# pl_inst.parlb = load_json('tmp_parlb.json')
-# pl_inst.parub = load_json('tmp_parub.json')
-# pl_inst.get_PL('all')
-# save_json(pl_inst.PLdict, 'tmp_PLdict.json')
-PLdict = load_json('tmp_PLdict.json')
-clevel = 5.236
-# figs, axs = plot_PL(PLdict, clevel, join=True, disp='save', fprefix='tmpPlot')
-# x = sorted(pl_inst.PLdict['k2'].keys())
-# y = [pl_inst.PLdict['k2'][i]['obj'] for i in x]
-# plt.plot(x, y, ls='None', marker='o')
-# plt.xlabel('k2')
-# plt.ylabel('ln(Objective)')
-# plt.show()
+# Get profile likelihood estimates and (potentially) confidence intervals
+pl_inst.get_clims()
+pl_inst.get_PL()
 
-# Save results to .json file
-# pl_inst.to_json('example_pl.json')
+# Save results to JSON file
+pl_inst.to_json('rapidTEG_solutions.json')
 
-# Load results from .json file
-# pl_inst.load_json('example_pl.json')
+# Load results from JSON file
+# pl_inst.load_json('rapidTEG_solutions.json')
 
 # Plot profile likelihood
-# pl_inst.plot_simplePL()
+pl_inst.plot_PL(join=True)

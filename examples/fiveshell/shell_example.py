@@ -6,40 +6,38 @@ import pandas as pd
 import sys
 sys.path.append("../")
 from scipy.io import loadmat
-from tmpPLEpy import *
+from PLEpy import *
 from pyomo.environ import *
 from pyomo.dae import *
 
-# Import data
+## Import data
 tydata = pd.read_json('5ShellData.json')
 tydata = tydata.sort_values('t')
 tdata = tydata['t'] - 2
 y0data = np.array(tydata.iloc[0:2].mean(axis=0).drop('t'))
 ydata = np.array(tydata.drop('t', axis=1))
-# C = np.load('fiveshell_Cmatrix.npz')['arr_0']
 C = np.load('fiveshell_Cmatrix_take3.npy')
 M = np.load('fiveshell_Mmatrix_take3.npy')
 Cdiag = C + M
-# x0 = np.flipud(np.load('fiveshell_x0.npy'))
 x0 = np.load('fiveshell_x0_take3.npy')
 V = np.load('fiveshell_V.npy').flatten()
 
-# Initial parameter guesses
+## Initial parameter guesses
+# rate coefficients
 k0 = [100., 0.176, 0.176, 0.0645, 4.23e-4]
-k0_ub = [100., 100., 100., 100., 0.00715]
-k0_lb = [1e-4, 1e-4, 1e-4, 2.56e-3, 1e-4]
-# k0[3:] = k0_ub[3:]
+# fraction functional
 f_func = [0.420, 0.492, 0.351, 0.582, 1.]
-# f_func = 5*[1.]
-f_lb = [1., 1., 0.428, 0.256, 1.]
-f_ub = [1., 1., 0.335, 0.256, 1.]
+# initial counts in functional regions
 x0_func = np.array([x0[i]*f_func[i] for i in range(5)])
 
-# Initial derivatives
+## Initial derivatives
+# dxdt = Ax
 A0 = np.zeros_like(C)
 for i in range(4):
+    # rate out of i
     A0[i, i] = -(1e-3)*k0[i]*V[i]
     if i != 0:
+        # rate in to i-1
         A0[i-1, i] = (1e-3)*k0[i]*V[i]/V[i-1]
 dxdt = np.dot(A0, x0_func)
 
@@ -47,21 +45,22 @@ dxdt = np.dot(A0, x0_func)
 # %% Create dynamic model
 model = ConcreteModel()
 
-# Define parameters/constants
+## Define parameters/constants
+# time
 model.t = ContinuousSet(bounds=(0, 81), initialize=range(81))
+# shell
 model.i = RangeSet(0, 4)
-model.k = Var(model.i, bounds=(1e-4, 100.))
+# rate coefficients
+model.k = Var(model.i, bounds=(1e-5, 100.))
 for i in model.i:
     model.k[i] = k0[i]
-    # model.k[i].setlb(k0_lb[i])
-    # model.k[i].setub(k0_ub[i])
-    # if i != 0:
-    #     model.k[i].fix()
 
-# Define states
+## Define states
+# activity in non-functional region of lungs
 model.x_nf = Param(model.i, within=NonNegativeReals, mutable=True)
 for i in model.i:
         model.x_nf[i] = x0[i][0] - x0_func[i][0]
+# activity in functional region of lungs
 model.x_func = Var(model.i, model.t, within=NonNegativeReals)
 for i in model.i:
         for t in model.t:
@@ -79,7 +78,7 @@ def _init_cond(m):
         yield m.x_func[i, 0] == x0_func[i][0]
 model.init_cond = ConstraintList(rule=_init_cond)
 
-# Increasing ki
+# Increasing ki constraint
 def _incr_k(m):
     for i in range(4):
         yield m.k[i] >= m.k[i+1]
@@ -95,6 +94,7 @@ def _dxdt(m, i, t):
 model.dxdt_ode = Constraint(model.i, model.t, rule=_dxdt)
 
 
+## Objective function
 def _obj(m):
     err = 0.
     for t in range(len(tdata)):
@@ -102,7 +102,6 @@ def _obj(m):
         yhat = np.dot(C, x)
         yobs = np.fliplr(np.array([ydata[t, :]])).T
         err += sum([(yhat[i][0] - yobs[i][0])**2 for i in model.i])
-        # err += (yhat[0][0] - yobs[0][0])**2
     return err
 model.obj = Objective(rule=_obj)
 
@@ -117,13 +116,23 @@ solver.options['max_iter'] = 6000
 results = solver.solve(model, keepfiles=False, tee=True)    
 model.solutions.load_from(results)
 
-
+#%% Create PLEpy object
 PLobj = PLEpy(model, ['k'], indices={'i': [0, 1, 2, 3, 4]})
 PLobj.set_index('k', 'i')
-# PLobj.get_clims()
-PLobj.clevel = 17.8
-# PLobj.get_PL()
-# PLobj.to_json('shell_example.json')
-PLobj.load_json('shell_example.json')
-figs, axs = PLobj.plot_PL(join=True, jmax=5)
-# plot_PL(PLobj.PLdict, clevel=PLobj.clevel)
+PLobj.get_clims()
+PLobj.get_PL()
+PLobj.to_json('shell_example.json')
+# PLobj.load_json('shell_example.json')
+
+# Plot profile likelihood (and make pretty)
+figs, axs = PLobj.plot_PL(join=True, jmax=5, disp='None')
+for i, ax in enumerate(axs[0][1, :]):
+    if i != 4:
+        ax.set_xlim([None, 20])
+    ax.xaxis.label.set_size(14)
+    ax.xaxis.label.set_weight('bold')
+axs[0][0, 0].yaxis.label.set_size(14)
+axs[0][0, 0].yaxis.label.set_weight('bold')
+axs[0][1, 0].yaxis.label.set_size(14)
+axs[0][1, 0].yaxis.label.set_weight('bold')
+figs[0].show()
