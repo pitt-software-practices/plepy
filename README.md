@@ -62,7 +62,7 @@ The `.get_clims()` method will get upper and lower confidence limits (CLs) with 
 ```python
 pl_inst.get_PL(pnames='all', n=20, min_step=1e-3, dtol=0.2, save=False)
 ```
-The `.get_PL()` method generates profile likelihood curves between either upper and lower CLs (or parameter bounds, if there were no CLs). As in step 4, `pnames` is can take the name of a single parameter, a list of parameters, or the value `'all'` (default). `n` specifies the minimum number of number of evaluations between each bound (increase to refine profile shape). On each interval (between evaluation points), if the change in $`|2ln(\textrm{Objective}|)`$ is greater than `dtol` and the interval is greater than `min_step`, the midpoint will be evaluated. Profiling will stop once there are no more intervals with a profile change greater than `dtol` or all remaining intervals are smaller than `min_step`. If you would like to save these values to a JSON file, the `save` option can be set to `True` and an additonal keyword, `fname`, with a name for the file can be specified (default value is `'tmp_PLfile.json'`).
+The `.get_PL()` method generates profile likelihood curves between either upper and lower CLs (or parameter bounds, if there were no CLs). As in step 4, `pnames` is can take the name of a single parameter, a list of parameters, or the value `'all'` (default). `n` specifies the minimum number of number of evaluations between each bound (increase to refine profile shape). On each interval (between evaluation points), if the change in $`|2ln(\textrm{Objective})|`$ is greater than `dtol` and the interval is greater than `min_step`, the midpoint will be evaluated. Profiling will stop once there are no more intervals with a profile change greater than `dtol` or all remaining intervals are smaller than `min_step`. If you would like to save these values to a JSON file, the `save` option can be set to `True` and an additonal keyword, `fname`, with a name for the file can be specified (default value is `'tmp_PLfile.json'`).
 
 **Note**: This method requires upper and lower bounds for each parameter profiled (given by `pnames`). These can be generated using `.get_clims()` method (recommended) or manually specified as dictionaries (`pl_inst.parlb` and `pl_inst.parub` for lower and upper limits, respectively) with parameter names as keys and bounds as values.
 
@@ -70,7 +70,7 @@ The `.get_PL()` method generates profile likelihood curves between either upper 
 ```python
 pl_inst.plot_PL(**kwds)
 ```
-Default usage ot the `.plot_PL()` method plots profiles for all parameters and all covariates on $2 \times N$ subplots, with a maximum of 4 columns per window. See example shown below. For more advanced usage, see [full API](/#).
+Default usage ot the `.plot_PL()` method plots profiles for all parameters and all covariates on $`2 \times N`$ subplots, with a maximum of 4 columns per window. See example shown below. For more advanced usage, see [full API](/#).
 
 ![Profile Likelihood Plots](/examples/rapidTEG/rapidTEG_plots.png)
 
