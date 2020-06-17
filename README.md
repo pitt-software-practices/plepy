@@ -2,7 +2,7 @@
 
 **P**rofile **L**ikelihood **E**stimator in **Py**thon (PLEpy) is a python package for generating parameter likelihood profiles for Pyomo models. These profiles can be used to determine whether parameters are identifiable, practically non-identifiable or structurally non-identifiable. If the parameter is identifiable, confidence limits will be calculated for it. For more detail on the theory behind this method, see [Raue et al. (2009)][Raue2009].
 
-[**Pyomo**][Pyomo] is an open-source modeling and optimization framework. It was chosen as a base for this tool due to its flexibility and user-friendliness. For documentation please refer to [www.pyomo.org/documentation](www.pyomo.org/documentation).
+[**Pyomo**][Pyomo] is an open-source modeling and optimization framework. It was chosen as a base for this tool due to its flexibility and user-friendliness. For documentation please refer to [www.pyomo.org/documentation](http://www.pyomo.org/documentation).
 
 ## Features
 
@@ -50,7 +50,7 @@ User must define a Pyomo model with at least one variable and an objective funct
 ```python
 pl_inst = PLEpy(model, ['par1', 'par2', ..., 'parN'], indices=None, **kwds)
 ```
-where `model` is your Pyomo model and `'par1'` throught `'parN'` are the names of the parameters to be profiled. `indices` is an optional argument that provides key-value pairs of index values for any indexed parameters. For example usage, see `/examples/fiveshell/shell_example.py`. Other options can be passed in using keywords. For all options, see [full API](/#).
+where `model` is your Pyomo model and `'par1'` throught `'parN'` are the names of the parameters to be profiled. `indices` is an optional argument that provides key-value pairs of index values for any indexed parameters. For example usage, see `/examples/fiveshell/shell_example.py`. Other options can be passed in using keywords. Eventually, there will be an API.
 
 ### 4. Get confidence limits (if any)
 ```python
@@ -85,7 +85,7 @@ Default usage ot the `.plot_PL()` method plots profiles for all parameters and a
 
 <!-- Links -->
 [Raue2009]: https://doi.org/10.1093/bioinformatics/btp358
-[Pyomo]: http://www.pyomo.org/documentation
+[Pyomo]: http://www.pyomo.org/
 [Hart2017Pyomo]: https://doi.org/10.1007/978-3-319-58821-6
 [Hart2011Pyomo]: https://doi.org/10.1007/s12532-011-0026-8
 [Nicholson2018]: https://doi.org/10.1007/s12532-017-0127-0
