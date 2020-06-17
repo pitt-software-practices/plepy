@@ -85,7 +85,7 @@ Default usage ot the `.plot_PL()` method plots profiles for all parameters and a
 
 <!-- Links -->
 [Raue2009]: https://doi.org/10.1093/bioinformatics/btp358
-[Pyomo]: www.pyomo.org
+[Pyomo]: http://www.pyomo.org/documentation
 [Hart2017Pyomo]: https://doi.org/10.1007/978-3-319-58821-6
 [Hart2011Pyomo]: https://doi.org/10.1007/s12532-011-0026-8
 [Nicholson2018]: https://doi.org/10.1007/s12532-017-0127-0
