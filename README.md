@@ -72,7 +72,7 @@ pl_inst.plot_PL(**kwds)
 ```
 Default usage ot the `.plot_PL()` method plots profiles for all parameters and all covariates on $`2 \times N`$ subplots, with a maximum of 4 columns per window. See example shown below. For more advanced usage, see [full API](/#).
 
-![Profile Likelihood Plots](/examples/rapidTEG/rapidTEG_plots.png)
+![Profile Likelihood Plots](/tests/rapidTEG/rapidTEG_plots.png)
 
 
 ## References
