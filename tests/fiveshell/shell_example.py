@@ -3,13 +3,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
+import os
 import sys
-sys.path.append("../")
+sys.path.append(os.path.abspath("../../"))
 from scipy.io import loadmat
-from PLEpy import *
+from plepy import PLEpy
 from pyomo.environ import *
 from pyomo.dae import *
 
+pwd = os.getcwd()
+fpath = os.path.dirname(__file__)
+os.chdir(fpath)
 ## Import data
 tydata = pd.read_json('5ShellData.json')
 tydata = tydata.sort_values('t')
@@ -136,3 +140,5 @@ axs[0][0, 0].yaxis.label.set_weight('bold')
 axs[0][1, 0].yaxis.label.set_size(14)
 axs[0][1, 0].yaxis.label.set_weight('bold')
 figs[0].show()
+
+os.chdir(pwd)

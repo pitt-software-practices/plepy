@@ -1,6 +1,8 @@
 import numpy as np
 import os
 import pandas as pd
+import sys
+sys.path.append(os.path.abspath("../../"))
 from pyomo.dae import ContinuousSet, DerivativeVar
 from pyomo.environ import *
 from plepy import PLEpy
@@ -149,7 +151,7 @@ def rapidTEG():
   pl_inst.get_PL()
 
   # Save results to JSON file
-  pl_inst.to_json('rapidTEG_solutions.json')
+  # pl_inst.to_json('rapidTEG_solutions.json')
 
   # Load results from JSON file
   # pl_inst.load_json('rapidTEG_solutions.json')

@@ -21,12 +21,17 @@ where k1-k5 are the rate coefficients and k1 > k2 > k3 > k4 > k5
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import os
 import sys
-sys.path.append("../../")
+sys.path.append(os.path.abspath("../../"))
 from scipy.io import loadmat
 from plepy import PLEpy
 from pyomo.environ import *
 from pyomo.dae import *
+
+pwd = os.getcwd()
+fpath = os.path.dirname(__file__)
+os.chdir(fpath)
 
 # Import 2D data
 ydata = np.load('toy2D_data_exp3.npz')['arr_0']
@@ -184,3 +189,5 @@ PLobj.get_clims(['A1', 'A2', 'A3', 'A4', 'A5'])
 # Generate profile likelihood curves
 PLobj.get_PL(['A1', 'A2', 'A3', 'A4', 'A5'])
 PLobj.plot_PL(pnames=['A1', 'A2', 'A3', 'A4', 'A5'], join=True, jmax=5)
+
+os.chdir(pwd)
