@@ -4,7 +4,7 @@ import sys
 import numpy as np
 import pandas as pd
 from pyomo.dae import ContinuousSet, DerivativeVar
-from pyomo.environ import *
+import pyomo.environ as penv
 
 sys.path.append(os.path.abspath("../../"))
 from plepy import PLEpy
@@ -61,33 +61,35 @@ def rapidTEG():
   n = 2
 
   # Create the model in Pyomo
-  model = ConcreteModel()
+  model = penv.ConcreteModel()
   model.t = ContinuousSet(initialize=data.index.values)
-  model.time = Set(initialize=data.index.values, within=model.t, ordered=True)
+  model.time = penv.Set(initialize=data.index.values, within=model.t,
+                        ordered=True)
 
   # Rate Constants and Variables (Parameters)
-  model.k1f = Var(initialize=k1f, bounds=(1.0e-4, 1.0e3))
-  model.k2 = Var(initialize=k2, bounds=(1.0e-5, 100.))
-  model.k3 = Var(initialize=k3, bounds=(1.0e-2, 1.0e5))
-  model.Platelet = Var(initialize=P0, bounds=(1.0, 70))
+  model.k1f = penv.Var(initialize=k1f, bounds=(1.0e-4, 1.0e3))
+  model.k2 = penv.Var(initialize=k2, bounds=(1.0e-5, 100.))
+  model.k3 = penv.Var(initialize=k3, bounds=(1.0e-2, 1.0e5))
+  model.Platelet = penv.Var(initialize=P0, bounds=(1.0, 70))
 
 
   # Concentration Variables, Define States
   # Platelets
-  model.p = Var(model.t, within=NonNegativeReals, initialize=(model.Platelet))
+  model.p = penv.Var(model.t, within=penv.NonNegativeReals,
+                     initialize=(model.Platelet))
   model.dpdt = DerivativeVar(model.p, wrt=model.t, initialize=(0.0))
 
   # Activated Platelets
-  model.pa = Var(model.t, within=NonNegativeReals, initialize=(Pa0))
+  model.pa = penv.Var(model.t, within=penv.NonNegativeReals, initialize=(Pa0))
   model.dpadt = DerivativeVar(model.pa, wrt=model.t, initialize=(0.0))
 
 
   # Thrombus
-  model.T = Var(model.t, within=NonNegativeReals, initialize=(T0))
+  model.T = penv.Var(model.t, within=penv.NonNegativeReals, initialize=(T0))
   model.dTdt = DerivativeVar(model.T, wrt=model.t, initialize=(0.0))
 
   # Lysis
-  model.L = Var(model.t, within=NonNegativeReals, initialize=(L0))
+  model.L = penv.Var(model.t, within=penv.NonNegativeReals, initialize=(L0))
   model.dLdt =DerivativeVar(model.L, wrt=model.t, initialize=(0.0))
 
   #Initial Conditions
@@ -96,47 +98,47 @@ def rapidTEG():
       yield model.pa[0] == 0.0
       yield model.T[0] == 0.0
       yield model.L[0] == 0.0
-  model.init_conditions = ConstraintList(rule=_init_conditions)
+  model.init_conditions = penv.ConstraintList(rule=_init_conditions)
 
   #Define Equations
   # ODEs are defined in the return statement
   # p
   def dpdt_rule(m, t):
     return m.dpdt[t] ==  -m.k1f*(1e-3)*(m.p[t])
-  model.dpdt_1_con = Constraint(model.t, rule=dpdt_rule)
+  model.dpdt_1_con = penv.Constraint(model.t, rule=dpdt_rule)
 
   # pa
   def dpadt_rule(m, t):
     return m.dpadt[t] ==  m.k1f*(1e-3)*(m.p[t]) - m.k2*(1e-2)*(m.pa[t]**n)
-  model.dpadt_1_con = Constraint(model.t, rule=dpadt_rule)
+  model.dpadt_1_con = penv.Constraint(model.t, rule=dpadt_rule)
 
   # T
   def dTdt_rule(m, t):
     return m.dTdt[t] ==  m.k2*(1e-2)*(m.pa[t]**n) - m.k3*(1e-5)*m.T[t]
-  model.dTdt_1_con = Constraint(model.t, rule=dTdt_rule)
+  model.dTdt_1_con = penv.Constraint(model.t, rule=dTdt_rule)
 
   # L
   def dLdt_rule(m, t):
     return m.dLdt[t] ==  m.k3*(1e-5)*m.T[t]
-  model.dLdt_1_con = Constraint(model.t, rule=dLdt_rule)
+  model.dLdt_1_con = penv.Constraint(model.t, rule=dLdt_rule)
 
 
   # Define the objective function
   def obj(m):
       SSE = sum([(data.Value.loc[t] - m.T[t])**2 for t in model.time])
       return SSE
-  model.obj = Objective(rule= obj)
+  model.obj = penv.Objective(rule= obj)
   # To use collocation method uncomment:
   # TFD = ransformationFactory("dae.collocation")
   # TFD.apply_to(model, nfe=len(model.t), cp=3, wrt=model.t,
   #              scheme="LAGRANGE-RADAU")
 
   # To use finite difference method uncomment:
-  TFD = TransformationFactory("dae.finite_difference")
+  TFD = penv.TransformationFactory("dae.finite_difference")
   TFD.apply_to(model, nfe=len(model.t), wrt=model.t, scheme="BACKWARD")
 
   # Solve the problem
-  opt = SolverFactory('ipopt')
+  opt = penv.SolverFactory('ipopt')
   opt.options['linear_solver'] = "ma97"
   opt.options['tol'] = 1e-5
   results = opt.solve(model, keepfiles=False, tee=False)
