@@ -1,10 +1,12 @@
-import numpy as np
 import os
-import pandas as pd
 import sys
-sys.path.append(os.path.abspath("../../"))
+
+import numpy as np
+import pandas as pd
 from pyomo.dae import ContinuousSet, DerivativeVar
 from pyomo.environ import *
+
+sys.path.append(os.path.abspath("../../"))
 from plepy import PLEpy
 
 def rapidTEG():

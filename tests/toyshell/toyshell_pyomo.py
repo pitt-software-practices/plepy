@@ -18,16 +18,18 @@ dA1/dt = k2*A2 - k1*A1
 where k1-k5 are the rate coefficients and k1 > k2 > k3 > k4 > k5
 """
 
+import os
+import sys
+
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import os
-import sys
-sys.path.append(os.path.abspath("../../"))
 from scipy.io import loadmat
-from plepy import PLEpy
 from pyomo.environ import *
 from pyomo.dae import *
+
+sys.path.append(os.path.abspath("../../"))
+from plepy import PLEpy
 
 pwd = os.getcwd()
 fpath = os.path.dirname(__file__)

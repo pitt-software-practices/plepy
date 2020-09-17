@@ -1,15 +1,17 @@
 # Problem Set-up
+import os
+import sys
+
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
-import os
-import sys
-sys.path.append(os.path.abspath("../../"))
 from scipy.io import loadmat
-from plepy import PLEpy
 from pyomo.environ import *
 from pyomo.dae import *
+
+sys.path.append(os.path.abspath("../../"))
+from plepy import PLEpy
 
 pwd = os.getcwd()
 fpath = os.path.dirname(__file__)
