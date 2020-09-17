@@ -1,10 +1,10 @@
 import json
-import numpy as np
 import copy
+
+import numpy as np
+import pyomo.environ as penv
+
 from plepy.helper import recur_to_json
-from pyomo.dae import *
-from pyomo.environ import *
-# TODO: fix, so not using import *
 
 
 class PLEpy:
@@ -46,7 +46,7 @@ class PLEpy:
             'tol': 1e-6
         }
         solver_opts = {**solver_opts, **solver_kwds}
-        opt = SolverFactory(solver)
+        opt = penv.SolverFactory(solver)
         opt.options = solver_opts
         self.solver = opt
 
@@ -54,7 +54,7 @@ class PLEpy:
         # Discretize and solve model if necessary
         if dae and presolve:
             assert isinstance(dae, str)
-            tfd = TransformationFactory("dae." + dae)
+            tfd = penv.TransformationFactory("dae." + dae)
             tfd.apply_to(self.m, **dae_kwds)
         if presolve:
             r = self.solver.solve(self.m)
@@ -65,8 +65,9 @@ class PLEpy:
         self.pnames = pnames
         self.indices = indices
         m_items = self.m.component_objects()
-        m_obj = list(filter(lambda x: isinstance(x, Objective), m_items))[0]
-        self.obj = value(m_obj)    # original objective value
+        obj_ls = list(filter(lambda x: isinstance(x, penv.Objective), m_items))
+        m_obj = obj_ls[0]
+        self.obj = penv.value(m_obj)    # original objective value
         pprofile = {p: self.m.find_component(p) for p in self.pnames}
         # list of Pyomo Variable objects to be profiled
         self.plist = pprofile
@@ -80,7 +81,7 @@ class PLEpy:
             # for indexed parameters...
             if not self.pindexed[p]:
                 # get optimal solution
-                self.popt[p] = value(self.plist[p])
+                self.popt[p] = penv.value(self.plist[p])
                 # get parameter bounds
                 self.pbounds[p] = self.plist[p].bounds
 
@@ -107,15 +108,16 @@ class PLEpy:
         self.pbounds[pname] = {}
         for k in pindex:
             # get optimal solutions
-            self.popt[pname][k] = value(self.plist[pname][k])
+            self.popt[pname][k] = penv.value(self.plist[pname][k])
             # get parameter bounds
             self.pbounds[pname][k] = self.plist[pname][k].bounds
 
     def getval(self, pname: str):
         if self.pindexed[pname]:
-            return {k: value(self.plist[pname][k]) for k in self.pidx[pname]}
+            return {k: penv.value(self.plist[pname][k])
+                    for k in self.pidx[pname]}
         else:
-            return value(self.plist[pname])
+            return penv.value(self.plist[pname])
 
     def setval(self, pname: str, val):
         if self.pindexed[pname]:
@@ -185,7 +187,7 @@ class PLEpy:
                     rx = self.m_eval(pname, x, idx=idx, reset=False)
                     xdict['flag'] = sflag(rx)
                     self.m.solutions.load_from(rx)
-                    xdict['obj'] = np.log(value(self.m.obj))
+                    xdict['obj'] = np.log(penv.value(self.m.obj))
                     # store values of other parameters at each point
                     for p in self.pnames:
                         xdict[p] = self.getval(p)
@@ -235,7 +237,7 @@ class PLEpy:
                         rx = self.m_eval(pname, x, idx=idx, reset=False)
                         xdict['flag'] = sflag(rx)
                         self.m.solutions.load_from(rx)
-                        xdict['obj'] = np.log(value(self.m.obj))
+                        xdict['obj'] = np.log(penv.value(self.m.obj))
                         # store values of other parameters at each pt
                         for p in self.pnames:
                             xdict[p] = self.getval(p)
@@ -413,7 +415,7 @@ class PLEpy:
         r_mid = self.m_eval(pname, x_mid, idx=idx)
         fcheck = sflag(r_mid)
         self.m.solutions.load_from(r_mid)
-        err = np.log(value(self.m.obj))
+        err = np.log(penv.value(self.m.obj))
         # If solution is feasible and the error is less than the value
         # at the confidence limit, there is no CI in that direction.
         # Set to bound.
@@ -438,7 +440,7 @@ class PLEpy:
                 if fcheck == 1:
                     x_out = float(x_mid)
                 self.m.solutions.load_from(r_mid)
-                err = np.log(value(self.m.obj))
+                err = np.log(penv.value(self.m.obj))
                 # if feasbile, but not over CL threshold, continue
                 # search outward from current midpoint
                 if fcheck == 0 and err < clevel:
@@ -477,7 +479,7 @@ class PLEpy:
                     r_mid = self.m_eval(pname, x_mid, idx=idx)
                     fcheck = sflag(r_mid)
                     self.m.solutions.load_from(r_mid)
-                    err = np.log(value(self.m.obj))
+                    err = np.log(penv.value(self.m.obj))
                     print(self.popt[pname])
                     biter += 1
                     # if midpoint infeasible, continue search inward
