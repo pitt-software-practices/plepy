@@ -41,7 +41,7 @@ class PLEpy:
         """
         # Define solver & options
         solver_opts = {
-            'linear_solver': 'ma97',
+            'linear_solver': 'ma27',
             'tol': 1e-6
         }
         solver_opts = {**solver_opts, **solver_kwds}
