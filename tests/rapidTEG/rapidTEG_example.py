@@ -9,7 +9,7 @@ def rapidTEG():
   pwd = os.getcwd()
   fpath = os.path.dirname(__file__)
   os.chdir(fpath)
-  ######### Shout out to Michelle for lending me your Pyomo model :) #########
+  ##### Shout out to Michelle for lending me your Pyomo model :) #####
 
   # Set up data from file
   data = pd.read_csv('ExampleTEG.txt', delimiter='\t')
@@ -31,7 +31,7 @@ def rapidTEG():
   else:
       print(':)')
 
-  ############################################################################
+  #####################################################################
   # Model Jam
   # Reactions:
   # P <-> Pa
@@ -123,8 +123,9 @@ def rapidTEG():
       return SSE
   model.obj = Objective(rule= obj)
   # To use collocation method uncomment:
-  # TFD=TransformationFactory("dae.collocation")
-  # TFD.apply_to(model,nfe=len(model.t),cp=3,wrt=model.t,scheme="LAGRANGE-RADAU")
+  # TFD = ransformationFactory("dae.collocation")
+  # TFD.apply_to(model, nfe=len(model.t), cp=3, wrt=model.t,
+  #              scheme="LAGRANGE-RADAU")
 
   # To use finite difference method uncomment:
   TFD = TransformationFactory("dae.finite_difference")
@@ -137,12 +138,13 @@ def rapidTEG():
   results = opt.solve(model, keepfiles=False, tee=False)
   model.solutions.load_from(results)
 
-  ############################################################################
+  #####################################################################
 
   # Create instance of PLEpy
   pl_inst = PLEpy(model, ['k1f', 'k2', 'k3', 'Platelet'])
 
-  # Get profile likelihood estimates and (potentially) confidence intervals
+  # Get profile likelihood estimates and (if they exist) confidence
+  # intervals
   pl_inst.get_clims()
   pl_inst.get_PL()
 

@@ -1,12 +1,12 @@
 """
 TODO: ADD FEATURE TO ENABLE USE OF UNBOUNDED VARIABLES
-Note: This does not work with the current version of PLEpy, to be fixed in 
-future versions
+Note: This does not work with the current version of PLEpy, to be fixed
+in future versions
 
-Uses a calculated "cross-talk" matrix (converts 3D counts to 2D activity for 
-each 3D and 2D shell) to fit first-order rate coefficients and initial
-activity in 3D shells using simulated 2D planar imaging data. Each 3D shell 
-only moves inward.
+Uses a calculated "cross-talk" matrix (converts 3D counts to 2D
+activity for each 3D and 2D shell) to fit first-order rate coefficients
+and initial activity in 3D shells using simulated 2D planar imaging
+data. Each 3D shell only moves inward.
 
 Model:
 dA5/dt = -k5*A5
@@ -57,8 +57,8 @@ model = ConcreteModel()
 
 # Define parameters
 model.t = ContinuousSet(bounds=(0, 81), initialize=range(81))
-# Rate coefficients are fit as sum previous rate coefficient and corresponding
-# "p" parameter.
+# Rate coefficients are fit as sum of previous rate coefficient and
+# corresponding "p" parameter.
 # k4 = k5 + p4, k3 = k4 + p3, etc.
 model.p1 = Var(initialize=k0[0], bounds=(1e-3, 100.))
 model.p2 = Var(initialize=k0[1], bounds=(1e-3, 100.))
@@ -166,9 +166,11 @@ plt.show()
 ps = [model.p1(), model.p2(), model.p3(), model.p4(), model.k5()]
 ps.reverse()
 ks = np.cumsum(ps)
-A0s = [model.A1[0](), model.A2[0](), model.A3[0](), model.A4[0](), model.A5[0]()]
+A0s = [model.A1[0](), model.A2[0](), model.A3[0](), model.A4[0](),
+       model.A5[0]()]
 
-PLobj = PLEpy(model, ['p1', 'p2', 'p3', 'p4', 'k5', 'A1', 'A2', 'A3', 'A4', 'A5'],
+PLobj = PLEpy(model,
+              ['p1', 'p2', 'p3', 'p4', 'k5', 'A1', 'A2', 'A3', 'A4', 'A5'],
               indices={'t0': [0]})
 PLobj.set_index('A1', 't0')
 PLobj.set_index('A2', 't0')
@@ -176,7 +178,8 @@ PLobj.set_index('A3', 't0')
 PLobj.set_index('A4', 't0')
 PLobj.set_index('A5', 't0')
 
-# Get confidence limits using binary searc (currently won't work b/c unbounded)
+# Get confidence limits using binary search (currently won't work
+# because initial activity is unbounded)
 PLobj.get_clims(['A1', 'A2', 'A3', 'A4', 'A5'])
 # Generate profile likelihood curves
 PLobj.get_PL(['A1', 'A2', 'A3', 'A4', 'A5'])
