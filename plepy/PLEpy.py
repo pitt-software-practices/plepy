@@ -85,6 +85,16 @@ class PLEpy:
                 self.pbounds[p] = self.plist[p].bounds
 
     def set_index(self, pname: str, *args):
+        """Indicate which index to use for parameter, pname
+
+        Args
+        ----
+        pname : str
+            name of parameter to set index of
+        *args : str
+            string specifying the name of the index or indices to use
+            for parameter
+        """
         import itertools as it
 
         assert self.pindexed[pname]
@@ -149,9 +159,6 @@ class PLEpy:
             location to save JSON file (if save=True),
             by default 'tmp_PLfile.json'
         """
-
-        # TODO: enable profiling of individual index values for indexed
-        # parameters
 
         def inner_loop(xopt, xb, direct=1, idx=None) -> dict:
             from plepy.helper import sflag

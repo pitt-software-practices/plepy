@@ -1,4 +1,4 @@
-# %% Problem Set-up
+# Problem Set-up
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -42,7 +42,7 @@ for i in range(4):
 dxdt = np.dot(A0, x0_func)
 
 
-# %% Create dynamic model
+# Create dynamic model
 model = ConcreteModel()
 
 ## Define parameters/constants
@@ -116,7 +116,7 @@ solver.options['max_iter'] = 6000
 results = solver.solve(model, keepfiles=False, tee=True)
 model.solutions.load_from(results)
 
-#%% Create PLEpy object
+# Create PLEpy object
 PLobj = PLEpy(model, ['k'], indices={'i': [0, 1, 2, 3, 4]})
 PLobj.set_index('k', 'i')
 PLobj.get_clims()

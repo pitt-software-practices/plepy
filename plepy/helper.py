@@ -88,7 +88,7 @@ def plot_PL(PLdict, clevel: float, pnames='all', covar='all', join: bool=False,
         filename prefix to give figures if disp='save', by default
         'tmp_fig'
     **dispkwds: optional
-        Keywords to pass to display function (either fig.show() or
+        keywords to pass to display function (either fig.show() or
         fig.savefig())
     """
     import matplotlib.pyplot as plt

@@ -15,7 +15,7 @@ dA3/dt = k4*A4 - k3*A3
 dA2/dt = k3*A3 - k2*A2
 dA1/dt = k2*A2 - k1*A1
 
-where k1-5 are the rate coefficients and k1 > k2 > k3 > k4 > k5
+where k1-k5 are the rate coefficients and k1 > k2 > k3 > k4 > k5
 """
 
 import numpy as np
