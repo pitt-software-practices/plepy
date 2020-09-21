@@ -52,7 +52,7 @@ def sflag(results):
 def plot_PL(PLdict, clevel: float, pnames='all', covar='all', join: bool=False,
             jmax: int=4, disp: str='show', fprefix: str='tmp_fig', **dispkwds):
     """Plot likelihood profiles for specified parameters
-    
+
     Args
     ----
     PLdict : dict
@@ -60,7 +60,7 @@ def plot_PL(PLdict, clevel: float, pnames='all', covar='all', join: bool=False,
         format {'pname': {par_val: {keys: 'obj', 'par1', 'par2', etc.}}}.
     clevel: float
         value of objective at confidence threshold
-    
+
     Keywords
     --------
     pnames : list or str, optional

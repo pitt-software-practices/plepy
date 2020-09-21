@@ -1,4 +1,4 @@
-""" 
+"""
 TODO: ADD FEATURE TO ENABLE USE OF UNBOUNDED VARIABLES
 Note: This does not work with the current version of PLEpy, to be fixed in 
 future versions
@@ -134,7 +134,7 @@ solver.options['linear_solver'] = 'ma97'    # academic solver
 solver.options['tol'] = 1e-6
 solver.options['max_iter'] = 6000
 
-results = solver.solve(model, keepfiles=False, tee=True)    
+results = solver.solve(model, keepfiles=False, tee=True)
 model.solutions.load_from(results)
 
 # Plot results

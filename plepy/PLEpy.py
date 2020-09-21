@@ -13,13 +13,13 @@ class PLEpy:
                  solver_kwds={}, tee=False, dae=None, dae_kwds={},
                  presolve=False):
         """Profile Likelihood Estimator object
-        
+
         Args
         ----
         model : Pyomo model
         pnames : list
             names of estimated parameters in model
-        
+
         Keywords
         --------
         indices : dict, optional
@@ -130,7 +130,7 @@ class PLEpy:
         pnames: list or str
             name(s) of parameters to generate likelihood profiles for, or 'all'
             to generate profiles for all model parameters, by default 'all'
-        
+
         Keywords
         --------
         n : int, optional
@@ -347,7 +347,7 @@ class PLEpy:
         idx: optional
             for indexed parameters, the value of the index to get the
             confidence limits for
-        
+
         Returns
         -------
         float
@@ -381,7 +381,7 @@ class PLEpy:
             plc = 'lower'
             puc = 'Lower'
             no_lim = float(x_out)
-        
+
         # Print search info
         print(' '*80)
         print('Parameter: {:s}'.format(pname))

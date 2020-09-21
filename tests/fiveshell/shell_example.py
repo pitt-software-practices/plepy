@@ -113,7 +113,7 @@ solver.options['linear_solver'] = 'ma97'
 solver.options['tol'] = 1e-6
 solver.options['max_iter'] = 6000
 
-results = solver.solve(model, keepfiles=False, tee=True)    
+results = solver.solve(model, keepfiles=False, tee=True)
 model.solutions.load_from(results)
 
 #%% Create PLEpy object
