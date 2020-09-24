@@ -1,15 +1,21 @@
-# %% Problem Set-up
+# Problem Set-up
+import os
+import sys
+
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
-import sys
-sys.path.append("../")
 from scipy.io import loadmat
-from PLEpy import *
-from pyomo.environ import *
-from pyomo.dae import *
+import pyomo.environ as penv
+from pyomo.dae import ContinuousSet, DerivativeVar
 
+sys.path.append(os.path.abspath("../../"))
+from plepy import PLEpy
+
+pwd = os.getcwd()
+fpath = os.path.dirname(__file__)
+os.chdir(fpath)
 ## Import data
 tydata = pd.read_json('5ShellData.json')
 tydata = tydata.sort_values('t')
@@ -42,26 +48,26 @@ for i in range(4):
 dxdt = np.dot(A0, x0_func)
 
 
-# %% Create dynamic model
-model = ConcreteModel()
+# Create dynamic model
+model = penv.ConcreteModel()
 
 ## Define parameters/constants
 # time
 model.t = ContinuousSet(bounds=(0, 81), initialize=range(81))
 # shell
-model.i = RangeSet(0, 4)
+model.i = penv.RangeSet(0, 4)
 # rate coefficients
-model.k = Var(model.i, bounds=(1e-5, 100.))
+model.k = penv.Var(model.i, bounds=(1e-5, 100.))
 for i in model.i:
     model.k[i] = k0[i]
 
 ## Define states
 # activity in non-functional region of lungs
-model.x_nf = Param(model.i, within=NonNegativeReals, mutable=True)
+model.x_nf = penv.Param(model.i, within=penv.NonNegativeReals, mutable=True)
 for i in model.i:
         model.x_nf[i] = x0[i][0] - x0_func[i][0]
 # activity in functional region of lungs
-model.x_func = Var(model.i, model.t, within=NonNegativeReals)
+model.x_func = penv.Var(model.i, model.t, within=penv.NonNegativeReals)
 for i in model.i:
         for t in model.t:
             model.x_func[i, t] = x0_func[i][0]
@@ -76,13 +82,13 @@ for i in model.i:
 def _init_cond(m):
     for i in model.i:
         yield m.x_func[i, 0] == x0_func[i][0]
-model.init_cond = ConstraintList(rule=_init_cond)
+model.init_cond = penv.ConstraintList(rule=_init_cond)
 
 # Increasing ki constraint
 def _incr_k(m):
     for i in range(4):
         yield m.k[i] >= m.k[i+1]
-model.incr_k = ConstraintList(rule=_incr_k)
+model.incr_k = penv.ConstraintList(rule=_incr_k)
 
 # System dynamics
 def _dxdt(m, i, t):
@@ -91,7 +97,7 @@ def _dxdt(m, i, t):
                                 + 1e-3*m.k[i+1]*V[i+1]/V[i]*m.x_func[i+1, t])
     else:
         return m.dxdt[i, t] == -1e-3*m.k[i]*V[i]*m.x_func[i, t]
-model.dxdt_ode = Constraint(model.i, model.t, rule=_dxdt)
+model.dxdt_ode = penv.Constraint(model.i, model.t, rule=_dxdt)
 
 
 ## Objective function
@@ -103,20 +109,20 @@ def _obj(m):
         yobs = np.fliplr(np.array([ydata[t, :]])).T
         err += sum([(yhat[i][0] - yobs[i][0])**2 for i in model.i])
     return err
-model.obj = Objective(rule=_obj)
+model.obj = penv.Objective(rule=_obj)
 
 # Set-up solver
-TFD=TransformationFactory("dae.finite_difference")
+TFD=penv.TransformationFactory("dae.finite_difference")
 TFD.apply_to(model, nfe=2*len(model.t), wrt=model.t, scheme="BACKWARD")
-solver = SolverFactory('ipopt')
+solver = penv.SolverFactory('ipopt')
 solver.options['linear_solver'] = 'ma97'
 solver.options['tol'] = 1e-6
 solver.options['max_iter'] = 6000
 
-results = solver.solve(model, keepfiles=False, tee=True)    
+results = solver.solve(model, keepfiles=False, tee=True)
 model.solutions.load_from(results)
 
-#%% Create PLEpy object
+# Create PLEpy object
 PLobj = PLEpy(model, ['k'], indices={'i': [0, 1, 2, 3, 4]})
 PLobj.set_index('k', 'i')
 PLobj.get_clims()
@@ -136,3 +142,5 @@ axs[0][0, 0].yaxis.label.set_weight('bold')
 axs[0][1, 0].yaxis.label.set_size(14)
 axs[0][1, 0].yaxis.label.set_weight('bold')
 figs[0].show()
+
+os.chdir(pwd)

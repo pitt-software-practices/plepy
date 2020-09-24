@@ -30,7 +30,7 @@ python examples/rapidTEG/rapidTEG_example.py
 ```
 
 ## Quick Start
-There are 6 key steps for using PLEpy:  
+There are 6 key steps for using PLEpy:
 1. Import the package
 2. Define Pyomo model
 3. Create PLEpy instance

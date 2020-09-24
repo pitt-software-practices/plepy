@@ -1,10 +1,10 @@
 import json
-import numpy as np
 import copy
+
+import numpy as np
+import pyomo.environ as penv
+
 from plepy.helper import recur_to_json
-from pyomo.dae import *
-from pyomo.environ import *
-# TODO: fix, so not using import *
 
 
 class PLEpy:
@@ -13,19 +13,19 @@ class PLEpy:
                  solver_kwds={}, tee=False, dae=None, dae_kwds={},
                  presolve=False):
         """Profile Likelihood Estimator object
-        
+
         Args
         ----
         model : Pyomo model
         pnames : list
             names of estimated parameters in model
-        
+
         Keywords
         --------
         indices : dict, optional
             dictionary of indices for estimated parameters of format:
-            {'index name': values}, 'index name' does not need to be the name
-            of an index in the model, by default None
+            {'index name': values}, 'index name' does not need to be
+            the name of an index in the model, by default None
         solver : str, optional
             name of solver for Pyomo to use, by default 'ipopt'
         solver_kwds : dict, optional
@@ -33,7 +33,8 @@ class PLEpy:
         tee : bool, optional
             print Pyomo iterations at each step, by default False
         dae : discretization method for dae package, optional
-            'finite_difference', 'collocation', or None, by default None
+            'finite_difference', 'collocation', or None, by default
+            None
         dae_kwds : dict, optional
             keywords for dae package, by default {}
         presolve : bool, optional
@@ -41,11 +42,11 @@ class PLEpy:
         """
         # Define solver & options
         solver_opts = {
-            'linear_solver': 'ma97',
+            'linear_solver': 'ma27',
             'tol': 1e-6
         }
         solver_opts = {**solver_opts, **solver_kwds}
-        opt = SolverFactory(solver)
+        opt = penv.SolverFactory(solver)
         opt.options = solver_opts
         self.solver = opt
 
@@ -53,19 +54,20 @@ class PLEpy:
         # Discretize and solve model if necessary
         if dae and presolve:
             assert isinstance(dae, str)
-            tfd = TransformationFactory("dae." + dae)
+            tfd = penv.TransformationFactory("dae." + dae)
             tfd.apply_to(self.m, **dae_kwds)
         if presolve:
             r = self.solver.solve(self.m)
             self.m.solutions.load_from(r)
 
-        # Gather parameters to be profiled, their optimized values, and bounds
-        # list of names of parameters to be profiled
+        # Gather parameters to be profiled, their optimized values, and
+        # bounds list of names of parameters to be profiled
         self.pnames = pnames
         self.indices = indices
         m_items = self.m.component_objects()
-        m_obj = list(filter(lambda x: isinstance(x, Objective), m_items))[0]
-        self.obj = value(m_obj)    # original objective value
+        obj_ls = list(filter(lambda x: isinstance(x, penv.Objective), m_items))
+        m_obj = obj_ls[0]
+        self.obj = penv.value(m_obj)    # original objective value
         pprofile = {p: self.m.find_component(p) for p in self.pnames}
         # list of Pyomo Variable objects to be profiled
         self.plist = pprofile
@@ -79,11 +81,21 @@ class PLEpy:
             # for indexed parameters...
             if not self.pindexed[p]:
                 # get optimal solution
-                self.popt[p] = value(self.plist[p])
+                self.popt[p] = penv.value(self.plist[p])
                 # get parameter bounds
                 self.pbounds[p] = self.plist[p].bounds
 
     def set_index(self, pname: str, *args):
+        """Indicate which index to use for parameter, pname
+
+        Args
+        ----
+        pname : str
+            name of parameter to set index of
+        *args : str
+            string specifying the name of the index or indices to use
+            for parameter
+        """
         import itertools as it
 
         assert self.pindexed[pname]
@@ -96,15 +108,16 @@ class PLEpy:
         self.pbounds[pname] = {}
         for k in pindex:
             # get optimal solutions
-            self.popt[pname][k] = value(self.plist[pname][k])
+            self.popt[pname][k] = penv.value(self.plist[pname][k])
             # get parameter bounds
             self.pbounds[pname][k] = self.plist[pname][k].bounds
 
     def getval(self, pname: str):
         if self.pindexed[pname]:
-            return {k: value(self.plist[pname][k]) for k in self.pidx[pname]}
+            return {k: penv.value(self.plist[pname][k])
+                    for k in self.pidx[pname]}
         else:
-            return value(self.plist[pname])
+            return penv.value(self.plist[pname])
 
     def setval(self, pname: str, val):
         if self.pindexed[pname]:
@@ -122,23 +135,24 @@ class PLEpy:
 
     def get_PL(self, pnames='all', n: int=20, min_step: float=1e-3,
                dtol: float=0.2, save: bool=False, fname='tmp_PLfile.json'):
-        """Once bounds are found, calculate likelihood profiles for each
-        parameter
+        """Once bounds are found, calculate likelihood profiles for
+        each parameter
 
         Args
         ----
         pnames: list or str
-            name(s) of parameters to generate likelihood profiles for, or 'all'
-            to generate profiles for all model parameters, by default 'all'
-        
+            name(s) of parameters to generate likelihood profiles for,
+            or 'all' to generate profiles for all model parameters, by
+            default 'all'
+
         Keywords
         --------
         n : int, optional
-            minimum number of discretization points between optimum and each
-            parameter bound, by default 20
+            minimum number of discretization points between optimum and
+            each parameter bound, by default 20
         min_step : float, optional
-            minimum allowable difference between two discretization points,
-            by default 1e-3
+            minimum allowable difference between two discretization
+            points, by default 1e-3
         dtol : float, optional
             maximum error change between two points, by default 0.2
         save: bool, optional
@@ -147,9 +161,6 @@ class PLEpy:
             location to save JSON file (if save=True),
             by default 'tmp_PLfile.json'
         """
-
-        # TODO: enable profiling of individual index values for indexed
-        # parameters
 
         def inner_loop(xopt, xb, direct=1, idx=None) -> dict:
             from plepy.helper import sflag
@@ -176,7 +187,7 @@ class PLEpy:
                     rx = self.m_eval(pname, x, idx=idx, reset=False)
                     xdict['flag'] = sflag(rx)
                     self.m.solutions.load_from(rx)
-                    xdict['obj'] = np.log(value(self.m.obj))
+                    xdict['obj'] = np.log(penv.value(self.m.obj))
                     # store values of other parameters at each point
                     for p in self.pnames:
                         xdict[p] = self.getval(p)
@@ -199,17 +210,19 @@ class PLEpy:
             else:
                 y_out = y0[:-1]
                 y_in = y0[1:]
-            # calculate magnitude of objective value changes between each step
+            # calculate magnitude of objective value changes between
+            # each step
             dy = np.abs(y_out - y_in)
             # pull indices where objective value change is greater than
-            # threshold value (dtol) and step size is greater than minimum
+            # threshold value (dtol) and step size is greater than
+            # minimum
             ierr = [(i > dtol and j > min_step)
                              for i, j in zip(dy, dx)]
             print('ierr:', ierr)
             itr = 0
-            # For intervals of large change (above dtol), calculate values at
-            # midpoint. Repeat until no large changes or minimum step size
-            # reached.
+            # For intervals of large change (above dtol), calculate
+            # values at midpoint. Repeat until no large changes or
+            # minimum step size is reached.
             while len(ierr) != 0:
                 print('iter: %i' % (itr))
                 x_oerr = np.array([j for i, j in zip(ierr, x_out) if i])
@@ -224,14 +237,15 @@ class PLEpy:
                         rx = self.m_eval(pname, x, idx=idx, reset=False)
                         xdict['flag'] = sflag(rx)
                         self.m.solutions.load_from(rx)
-                        xdict['obj'] = np.log(value(self.m.obj))
-                        # store values of other parameters at each point
+                        xdict['obj'] = np.log(penv.value(self.m.obj))
+                        # store values of other parameters at each pt
                         for p in self.pnames:
                             xdict[p] = self.getval(p)
                     except ValueError:
                         xdict = copy.deepcopy(pdict[x_ierr[w]])
                     pdict[x] = xdict
-                # get all parameter values involved in intervals of interest
+                # get parameter values needed to calculate change in
+                # error over intervals that have not converged
                 x0 = np.array(sorted(set([*x_oerr, *x_mid, *x_ierr])))
                 print('x0:', x0)
                 x_out = x0[1:]
@@ -242,11 +256,12 @@ class PLEpy:
                 print('y0:', y0)
                 y_out = y0[1:]
                 y_in = y0[:-1]
-                # calculate magnitude of objective value change between each
-                # step
+                # calculate magnitude of objective value change between
+                # each step
                 dy = np.abs(y_out - y_in)
-                # pull indices where objective value change is greater than
-                # threshold value (dtol) and step size is greater than minimum
+                # pull indices where objective value change is greater
+                # than threshold value (dtol) and step size is greater
+                # than minimum
                 ierr = [(i > dtol and j > min_step)
                                  for i, j in zip(dy, dx)]
                 print('ierr:', ierr)
@@ -264,11 +279,11 @@ class PLEpy:
         # generate profiles for parameters indicated
         for pname in pnames:
             print('Profiling %s...' % (pname))
-            # make sure upper and lower confidence limits have been specified
-            # or solved for using get_clims()
-            emsg = ("Parameter confidence limits must be determined prior to "
-                    "calculating likelihood profile.\nTry running "
-                    ".get_clims() method first.")
+            # make sure upper and lower confidence limits have been
+            # specified or calculated using get_clims()
+            emsg = ("Parameter confidence limits must be determined "
+                    "prior to calculating likelihood profile.\nTry "
+                    "running .get_clims() method first.")
             assert self.parlb[pname] is not None, emsg
             assert self.parub[pname] is not None, emsg
 
@@ -314,12 +329,13 @@ class PLEpy:
         return figs, axs
 
     def m_eval(self, pname: str, pardr, idx=None, reset=True):
-        # initialize all parameters at their optimal value (ensure feasibility)
+        # initialize all parameters at their optimal value (to ensure
+        # feasibility)
         if reset:
             for p in self.pnames:
                 self.setval(p, self.popt[p])
-        # if parameter is indexed, set value of parameter at specified index
-        # to pardr
+        # if parameter is indexed, set value of parameter at specified
+        # index to pardr
         if idx is not None:
             self.plist[pname][idx].set_value(pardr)
         # if parameter is unindexed, set value of parameter to pardr
@@ -338,7 +354,8 @@ class PLEpy:
         clevel: float
             value of log of objective function at confidence limit
         acc: int
-            accuracy in terms of the number of significant figures to consider
+            accuracy in terms of the number of significant figures to
+            consider
 
         Keywords
         --------
@@ -347,7 +364,7 @@ class PLEpy:
         idx: optional
             for indexed parameters, the value of the index to get the
             confidence limits for
-        
+
         Returns
         -------
         float
@@ -381,7 +398,7 @@ class PLEpy:
             plc = 'lower'
             puc = 'Lower'
             no_lim = float(x_out)
-        
+
         # Print search info
         print(' '*80)
         print('Parameter: {:s}'.format(pname))
@@ -398,16 +415,17 @@ class PLEpy:
         r_mid = self.m_eval(pname, x_mid, idx=idx)
         fcheck = sflag(r_mid)
         self.m.solutions.load_from(r_mid)
-        err = np.log(value(self.m.obj))
-        # If solution is feasible and the error is less than the value at the
-        # confidence limit, there is no CI in that direction. Set to bound.
+        err = np.log(penv.value(self.m.obj))
+        # If solution is feasible and the error is less than the value
+        # at the confidence limit, there is no CI in that direction.
+        # Set to bound.
         if fcheck == 0 and err < clevel:
             pCI = no_lim
             print('No %s CI! Setting to %s bound.' % (plc, plc))
         else:
             fiter = 0
-            # If solution is infeasible, find a new value for x_out that is
-            # feasible and above the confidence limit threshold.
+            # If solution is infeasible, find a new value for x_out
+            # that is feasible and above the confidence threshold.
             while (fcheck == 1 or err < clevel) and ctol > 0.0:
                 print('f_iter: %i, x_high: %f, x_low: %f'
                         % (fiter, x_high, x_low))
@@ -417,13 +435,14 @@ class PLEpy:
                 x_mid = 0.5*(x_high + x_low)
                 r_mid = self.m_eval(pname, x_mid, idx)
                 fcheck = sflag(r_mid)
-                # if infeasible, continue search inward from current midpoint
+                # if infeasible, continue search inward from current
+                # midpoint
                 if fcheck == 1:
                     x_out = float(x_mid)
                 self.m.solutions.load_from(r_mid)
-                err = np.log(value(self.m.obj))
-                # if feasbile, but not over CL threshold, continue search
-                # outward from current midpoint
+                err = np.log(penv.value(self.m.obj))
+                # if feasbile, but not over CL threshold, continue
+                # search outward from current midpoint
                 if fcheck == 0 and err < clevel:
                     x_in = float(x_mid)
                 if direct:
@@ -437,8 +456,8 @@ class PLEpy:
             if ctol == 0.0:
                 pCI = no_lim
                 print('No %s CI! Setting to %s bound.' % (plc, plc))
-            # otherwise, find the upper CI between outermost feasible pt and
-            # optimal solution using binary search
+            # otherwise, find the upper CI between outermost feasible
+            # pt and optimal solution using binary search
             else:
                 x_out = float(x_mid)
                 if direct:
@@ -448,7 +467,8 @@ class PLEpy:
                     x_high = x_in
                     x_low = x_out
                 biter = 0
-                # repeat until convergence criteria is met (x_high = x_low)
+                # repeat until convergence criteria is met
+                # (i.e. x_high = x_low)
                 while ctol > 0.0:
                     print('b_iter: %i, x_high: %f, x_low: %f'
                             % (biter, x_high, x_low))
@@ -459,7 +479,7 @@ class PLEpy:
                     r_mid = self.m_eval(pname, x_mid, idx=idx)
                     fcheck = sflag(r_mid)
                     self.m.solutions.load_from(r_mid)
-                    err = np.log(value(self.m.obj))
+                    err = np.log(penv.value(self.m.obj))
                     print(self.popt[pname])
                     biter += 1
                     # if midpoint infeasible, continue search inward
@@ -493,8 +513,8 @@ class PLEpy:
         Keywords
         --------
         pnames: list or str, optional
-            name of parameter(s) to get confidence limits for, if 'all' will
-            find limits for all parameters, by default 'all'
+            name of parameter(s) to get confidence limits for, if 'all'
+            will find limits for all parameters, by default 'all'
         alpha : float, optional
             confidence level, by default 0.05
         acc : int, optional
@@ -509,8 +529,8 @@ class PLEpy:
         # Define threshold of confidence level
         clevel = self.get_clevel(alpha)
 
-        # create dictionaries for the confidence limits with the same structure
-        # as self.popt
+        # create dictionaries for the confidence limits with the same
+        # structure as self.popt
         parub = copy.deepcopy(dict(self.popt))
         parlb = copy.deepcopy(dict(self.popt))
         # Get upper & lower confidence limits
@@ -541,8 +561,8 @@ class PLEpy:
                 'pbounds', 'parlb', 'parub', 'clevel', 'PLdict']
         sv_dict = {}
         for att in atts:
-            # if PLEpy attribute exists, convert it to a JSON compatible form
-            # and add it to sv_dict
+            # if PLEpy attribute exists, convert it to a JSON
+            # compatible form and add it to sv_dict
             try:
                 sv_var = getattr(self, att)
                 if isinstance(sv_var, dict):
@@ -562,7 +582,7 @@ class PLEpy:
         with open(filename, 'r') as f:
             sv_dict = json.load(f)
         for att in atts:
-            # check for each PLEpy attribute and unserialize (word?) it from
+            # check for each PLEpy attribute and unserialize it from
             # JSON format
             try:
                 sv_var = sv_dict[att]

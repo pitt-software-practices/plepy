@@ -1,5 +1,6 @@
-numpy
-pyomo
-scipy
-matplotlib
-seaborn
+numpy~=1.19
+pyomo~=5.7
+scipy~=1.5
+matplotlib~=3.3
+seaborn~=0.10
+pandas~=1.1

@@ -1,12 +1,12 @@
-""" 
+"""
 TODO: ADD FEATURE TO ENABLE USE OF UNBOUNDED VARIABLES
-Note: This does not work with the current version of PLEpy, to be fixed in 
-future versions
+Note: This does not work with the current version of PLEpy, to be fixed
+in future versions
 
-Uses a calculated "cross-talk" matrix (converts 3D counts to 2D activity for 
-each 3D and 2D shell) to fit first-order rate coefficients and initial
-activity in 3D shells using simulated 2D planar imaging data. Each 3D shell 
-only moves inward.
+Uses a calculated "cross-talk" matrix (converts 3D counts to 2D
+activity for each 3D and 2D shell) to fit first-order rate coefficients
+and initial activity in 3D shells using simulated 2D planar imaging
+data. Each 3D shell only moves inward.
 
 Model:
 dA5/dt = -k5*A5
@@ -15,18 +15,25 @@ dA3/dt = k4*A4 - k3*A3
 dA2/dt = k3*A3 - k2*A2
 dA1/dt = k2*A2 - k1*A1
 
-where k1-5 are the rate coefficients and k1 > k2 > k3 > k4 > k5
+where k1-k5 are the rate coefficients and k1 > k2 > k3 > k4 > k5
 """
+
+import os
+import sys
 
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import sys
-sys.path.append("../../")
 from scipy.io import loadmat
+import pyomo.environ as penv
+from pyomo.dae import ContinuousSet, DerivativeVar
+
+sys.path.append(os.path.abspath("../../"))
 from plepy import PLEpy
-from pyomo.environ import *
-from pyomo.dae import *
+
+pwd = os.getcwd()
+fpath = os.path.dirname(__file__)
+os.chdir(fpath)
 
 # Import 2D data
 ydata = np.load('toy2D_data_exp3.npz')['arr_0']
@@ -53,25 +60,25 @@ da0dt.append(-k0[4]*a0[4])
 da0dt = [1e-2*a for a in da0dt]
 
 # Create dynamic model
-model = ConcreteModel()
+model = penv.ConcreteModel()
 
 # Define parameters
 model.t = ContinuousSet(bounds=(0, 81), initialize=range(81))
-# Rate coefficients are fit as sum previous rate coefficient and corresponding
-# "p" parameter.
+# Rate coefficients are fit as sum of previous rate coefficient and
+# corresponding "p" parameter.
 # k4 = k5 + p4, k3 = k4 + p3, etc.
-model.p1 = Var(initialize=k0[0], bounds=(1e-3, 100.))
-model.p2 = Var(initialize=k0[1], bounds=(1e-3, 100.))
-model.p3 = Var(initialize=k0[2], bounds=(1e-3, 100.))
-model.p4 = Var(initialize=k0[3], bounds=(1e-3, 100.))
-model.k5 = Var(initialize=k0[4], bounds=(1e-3, 100.))
+model.p1 = penv.Var(initialize=k0[0], bounds=(1e-3, 100.))
+model.p2 = penv.Var(initialize=k0[1], bounds=(1e-3, 100.))
+model.p3 = penv.Var(initialize=k0[2], bounds=(1e-3, 100.))
+model.p4 = penv.Var(initialize=k0[3], bounds=(1e-3, 100.))
+model.k5 = penv.Var(initialize=k0[4], bounds=(1e-3, 100.))
 
 # Define 3D shell states
-model.A1 = Var(model.t, initialize=a0[0], within=NonNegativeReals)
-model.A2 = Var(model.t, initialize=a0[1], within=NonNegativeReals)
-model.A3 = Var(model.t, initialize=a0[2], within=NonNegativeReals)
-model.A4 = Var(model.t, initialize=a0[3], within=NonNegativeReals)
-model.A5 = Var(model.t, initialize=a0[4], within=NonNegativeReals)
+model.A1 = penv.Var(model.t, initialize=a0[0], within=penv.NonNegativeReals)
+model.A2 = penv.Var(model.t, initialize=a0[1], within=penv.NonNegativeReals)
+model.A3 = penv.Var(model.t, initialize=a0[2], within=penv.NonNegativeReals)
+model.A4 = penv.Var(model.t, initialize=a0[3], within=penv.NonNegativeReals)
+model.A5 = penv.Var(model.t, initialize=a0[4], within=penv.NonNegativeReals)
 
 # Initialize derivatives
 model.dA1dt = DerivativeVar(model.A1, wrt=model.t, initialize=da0dt[0])
@@ -88,7 +95,7 @@ def _dA1dt(m, t):
     k1 = k2 + m.p1
 
     return m.dA1dt[t] == 1e-2*(k2*m.A2[t] - k1*m.A1[t])
-model.dA1dt_ode = Constraint(model.t, rule=_dA1dt)
+model.dA1dt_ode = penv.Constraint(model.t, rule=_dA1dt)
 
 def _dA2dt(m, t):
     k4 = m.k5 + m.p4
@@ -96,24 +103,24 @@ def _dA2dt(m, t):
     k2 = k3 + m.p2
 
     return m.dA1dt[t] == 1e-2*(k3*m.A3[t] - k2*m.A2[t])
-model.dA2dt_ode = Constraint(model.t, rule=_dA2dt)
+model.dA2dt_ode = penv.Constraint(model.t, rule=_dA2dt)
 
 def _dA3dt(m, t):
     k4 = m.k5 + m.p4
     k3 = k4 + m.p3
 
     return m.dA3dt[t] == 1e-2*(k4*m.A4[t] - k3*m.A3[t])
-model.dA3dt_ode = Constraint(model.t, rule=_dA3dt)
+model.dA3dt_ode = penv.Constraint(model.t, rule=_dA3dt)
 
 def _dA4dt(m, t):
     k4 = m.k5 + m.p4
 
     return m.dA4dt[t] == 1e-2*(m.k5*m.A5[t] - k4*m.A4[t])
-model.dA4dt_ode = Constraint(model.t, rule=_dA4dt)
+model.dA4dt_ode = penv.Constraint(model.t, rule=_dA4dt)
 
 def _dA5dt(m, t):
     return m.dA5dt[t] == 1e-2*(- m.k5*m.A5[t])
-model.dA5dt_ode = Constraint(model.t, rule=_dA5dt)
+model.dA5dt_ode = penv.Constraint(model.t, rule=_dA5dt)
 
 # Objective function (SSE)
 def _obj(m):
@@ -124,17 +131,17 @@ def _obj(m):
     # err = (ydata - a2D)**2
     err = (iydata - a3D.T)**2
     return sum(sum(err))
-model.obj = Objective(rule=_obj)
+model.obj = penv.Objective(rule=_obj)
 
 # Set-up solver
-TFD=TransformationFactory("dae.finite_difference")
+TFD=penv.TransformationFactory("dae.finite_difference")
 TFD.apply_to(model, nfe=2*len(model.t), wrt=model.t, scheme="BACKWARD")
-solver = SolverFactory('ipopt')
+solver = penv.SolverFactory('ipopt')
 solver.options['linear_solver'] = 'ma97'    # academic solver
 solver.options['tol'] = 1e-6
 solver.options['max_iter'] = 6000
 
-results = solver.solve(model, keepfiles=False, tee=True)    
+results = solver.solve(model, keepfiles=False, tee=True)
 model.solutions.load_from(results)
 
 # Plot results
@@ -166,9 +173,11 @@ plt.show()
 ps = [model.p1(), model.p2(), model.p3(), model.p4(), model.k5()]
 ps.reverse()
 ks = np.cumsum(ps)
-A0s = [model.A1[0](), model.A2[0](), model.A3[0](), model.A4[0](), model.A5[0]()]
+A0s = [model.A1[0](), model.A2[0](), model.A3[0](), model.A4[0](),
+       model.A5[0]()]
 
-PLobj = PLEpy(model, ['p1', 'p2', 'p3', 'p4', 'k5', 'A1', 'A2', 'A3', 'A4', 'A5'],
+PLobj = PLEpy(model,
+              ['p1', 'p2', 'p3', 'p4', 'k5', 'A1', 'A2', 'A3', 'A4', 'A5'],
               indices={'t0': [0]})
 PLobj.set_index('A1', 't0')
 PLobj.set_index('A2', 't0')
@@ -176,8 +185,11 @@ PLobj.set_index('A3', 't0')
 PLobj.set_index('A4', 't0')
 PLobj.set_index('A5', 't0')
 
-# Get confidence limits using binary searc (currently won't work b/c unbounded)
+# Get confidence limits using binary search (currently won't work
+# because initial activity is unbounded)
 PLobj.get_clims(['A1', 'A2', 'A3', 'A4', 'A5'])
 # Generate profile likelihood curves
 PLobj.get_PL(['A1', 'A2', 'A3', 'A4', 'A5'])
 PLobj.plot_PL(pnames=['A1', 'A2', 'A3', 'A4', 'A5'], join=True, jmax=5)
+
+os.chdir(pwd)

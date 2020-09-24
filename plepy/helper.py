@@ -52,44 +52,50 @@ def sflag(results):
 def plot_PL(PLdict, clevel: float, pnames='all', covar='all', join: bool=False,
             jmax: int=4, disp: str='show', fprefix: str='tmp_fig', **dispkwds):
     """Plot likelihood profiles for specified parameters
-    
+
     Args
     ----
     PLdict : dict
-        profile likelihood data generated from PLEpy function, 'get_PL()', has
-        format {'pname': {par_val: {keys: 'obj', 'par1', 'par2', etc.}}}.
+        profile likelihood data generated from PLEpy function,
+        'get_PL()', has format:
+        {'pname': {par_val: {keys: 'obj', 'par1', 'par2', etc.}}}
     clevel: float
         value of objective at confidence threshold
-    
+
     Keywords
     --------
     pnames : list or str, optional
-        parameter(s) to generate plots for, if 'all' will plot for all keys in
-        outer level of dictionary, by default 'all'
-    covar : list or str, optional
-        parameter(s) to include covariance plots for, if 'all' will include all
+        parameter(s) to generate plots for, if 'all' will plot for all
         keys in outer level of dictionary, by default 'all'
+    covar : list or str, optional
+        parameter(s) to include covariance plots for, if 'all' will
+        include all keys in outer level of dictionary, by default 'all'
     join : bool, optional
-        place multiple profile likelihood plots on a single figure, by default 
-        False
+        place multiple profile likelihood plots on a single figure, by
+        default False
     jmax : int, optional
-        if join=True, the maximum number of plots to put in a single figure, by
-        default 4
+        if join=True, the maximum number of plots to put in a single
+        figure, by default 4
     disp: str, optional
-        how to display generated figures, 'show' will run command plt.show(),
-        'save' will save figures using filename prefix specified in fprefix,
-        'None' will not display figures and simply return their handles, by
-        default 'show'
+        how to display generated figures:
+        'show' will run command plt.show(),
+        'save' will save figures using filename prefix specified in
+            fprefix,
+        'None' will not display figures and simply return their
+            handles,
+        by default 'show'
     fprefix: str, optional
-        filename prefix to give figures if disp='save', by default 'tmp_fig'
+        filename prefix to give figures if disp='save', by default
+        'tmp_fig'
     **dispkwds: optional
-        Keywords to pass to display function (either fig.show() or
+        keywords to pass to display function (either fig.show() or
         fig.savefig())
     """
     import matplotlib.pyplot as plt
     import seaborn as sns
 
-    # TODO: enable plotting of individual index values for indexed variables
+    # TODO: enable plotting of individual index values for indexed
+    # variables
 
     cpal = sns.color_palette("deep")
     # If pnames or covar is a string, convert to appropriate list
@@ -151,9 +157,9 @@ def plot_PL(PLdict, clevel: float, pnames='all', covar='all', join: bool=False,
     assert jmax > 0
     if join:
         nfig = int(np.ceil(npars/jmax))
-        # if the number of profiled parameters is not divisible by the maximum
-        # number of subplot columns (jmax), make the first figure generated
-        # contain the remainder
+        # if the number of profiled parameters is not divisible by the
+        # maximum number of subplot columns (jmax), make the first
+        # figure generated contain the remainder
         ncur = npars % jmax
         if not ncur:
             ncur = jmax
@@ -233,8 +239,8 @@ def plot_PL(PLdict, clevel: float, pnames='all', covar='all', join: bool=False,
         figs[d].tight_layout()
         # check how many parameters are left to plot
         nleft = nleft - ncur
-        # since we already plotted the remainder parameters, nleft should be
-        # divisible by jmax now
+        # since we already plotted the remainder parameters, nleft
+        # should be divisible by jmax now
         if join:
             ncur = jmax
         d += 1

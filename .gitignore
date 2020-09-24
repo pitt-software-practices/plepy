@@ -1,4 +1,5 @@
 .vscode
+.docstring
 build/*
 dist/*
 data/*
