@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/monshap/plepy.svg?branch=master)](https://travis-ci.org/monshap/plepy)
+[![Build Status](https://travis-ci.org/pitt-software-practices/plepy.svg?branch=master)](https://travis-ci.org/pitt-software-practices/plepy)
 
 # Profile Likelihood Estimator in Python (PLEpy)
 
