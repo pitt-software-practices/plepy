@@ -2,9 +2,13 @@ import numpy as np
 
 
 def sigfig(n, sf: int):
-    mag = int(np.floor(np.log10(n)))
-    rf = sf - mag - 1
-    return round(n, rf)
+    if n == 0:
+        round_result = 0
+    else:
+        mag = int(np.floor(np.log10(abs(n))))
+        rf = sf - mag - 1
+        round_result = round(n,rf)
+    return round_result
 
 
 def recur_to_json(d: dict) -> dict:
