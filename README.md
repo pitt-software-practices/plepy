@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/pitt-software-practices/plepy.svg?branch=master)](https://travis-ci.org/pitt-software-practices/plepy)
+
 # Profile Likelihood Estimator in Python (PLEpy)
 
 **P**rofile **L**ikelihood **E**stimator in **Py**thon (PLEpy) is a python package for generating parameter likelihood profiles for Pyomo models. These profiles can be used to determine whether parameters are identifiable, practically non-identifiable or structurally non-identifiable. If the parameter is identifiable, confidence limits will be calculated for it. For more detail on the theory behind this method, see [Raue et al. (2009)][Raue2009].
