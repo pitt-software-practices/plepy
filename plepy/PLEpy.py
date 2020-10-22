@@ -484,7 +484,6 @@ class PLEpy:
                     fcheck = sflag(r_mid)
                     self.m.solutions.load_from(r_mid)
                     err = np.log(penv.value(self.m.obj))
-                    print(self.popt[pname])
                     biter += 1
                     # if midpoint infeasible, continue search inward
                     if fcheck == 1:
@@ -509,7 +508,6 @@ class PLEpy:
             self.plist[pname].free()
         else:
             self.plist[pname][idx].free()
-        print(self.popt[pname])
         return pCI
 
     def get_clims(self, pnames='all', alpha: float=0.05, acc: float=0.001):
