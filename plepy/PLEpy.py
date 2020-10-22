@@ -49,6 +49,7 @@ class PLEpy:
         opt = penv.SolverFactory(solver)
         opt.options = solver_opts
         self.solver = opt
+        self.tee = tee
 
         self.m = model
         # Discretize and solve model if necessary
@@ -57,7 +58,7 @@ class PLEpy:
             tfd = penv.TransformationFactory("dae." + dae)
             tfd.apply_to(self.m, **dae_kwds)
         if presolve:
-            r = self.solver.solve(self.m)
+            r = self.solver.solve(self.m, tee=self.tee)
             self.m.solutions.load_from(r)
 
         # Gather parameters to be profiled, their optimized values, and
@@ -342,7 +343,7 @@ class PLEpy:
         else:
             self.plist[pname].set_value(pardr)
         # evalutate model at this point
-        return self.solver.solve(self.m)
+        return self.solver.solve(self.m, tee=self.tee)
 
     def bsearch(self, pname: str, clevel: float, acc: float,
                 direct: int=1, idx=None) -> float:
