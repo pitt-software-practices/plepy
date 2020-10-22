@@ -1,12 +1,6 @@
 import numpy as np
 
 
-def sigfig(n, sf: int):
-    mag = int(np.floor(np.log10(n)))
-    rf = sf - mag - 1
-    return round(n, rf)
-
-
 def recur_to_json(d: dict) -> dict:
     # recurssively convert dictionaries to compatible forms for JSON
     # serialization (keys must be strings)

@@ -370,7 +370,7 @@ class PLEpy:
         float
             value of parameter bound
         """
-        from plepy.helper import sigfig, sflag
+        from plepy.helper import sflag
 
         # manually change parameter of interest
         if idx is None:
@@ -408,7 +408,8 @@ class PLEpy:
         print(' '*80)
 
         # check convergence criteria
-        ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
+        x_range = x_high - x_low
+        ctol = x_high*acc
 
         # Find outermost feasible value
         # evaluate at outer bound
@@ -426,11 +427,12 @@ class PLEpy:
             fiter = 0
             # If solution is infeasible, find a new value for x_out
             # that is feasible and above the confidence threshold.
-            while (fcheck == 1 or err < clevel) and ctol > 0.0:
+            while (fcheck == 1 or err < clevel) and x_range > ctol:
                 print('f_iter: %i, x_high: %f, x_low: %f'
                         % (fiter, x_high, x_low))
                 # check convergence criteria
-                ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
+                x_range = x_high - x_low
+                ctol = x_high*acc
                 # evaluate at midpoint
                 x_mid = 0.5*(x_high + x_low)
                 r_mid = self.m_eval(pname, x_mid, idx)
@@ -453,7 +455,7 @@ class PLEpy:
                     x_low = x_out
                 fiter += 1
             # if convergence reached, there is no upper CI
-            if ctol == 0.0:
+            if x_range < ctol:
                 pCI = no_lim
                 print('No %s CI! Setting to %s bound.' % (plc, plc))
             # otherwise, find the upper CI between outermost feasible
@@ -469,11 +471,12 @@ class PLEpy:
                 biter = 0
                 # repeat until convergence criteria is met
                 # (i.e. x_high = x_low)
-                while ctol > 0.0:
+                while x_range > ctol:
                     print('b_iter: %i, x_high: %f, x_low: %f'
                             % (biter, x_high, x_low))
                     # check convergence criteria
-                    ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
+                    x_range = x_high - x_low
+                    ctol = x_high*acc
                     # evaluate at midpoint
                     x_mid = 0.5*(x_high + x_low)
                     r_mid = self.m_eval(pname, x_mid, idx=idx)
@@ -497,7 +500,7 @@ class PLEpy:
                     else:
                         x_high = x_in
                         x_low = x_out
-                pCI = sigfig(x_mid, acc)
+                pCI = x_mid
                 print('%s CI of %f found!' % (puc, pCI))
         # reset parameter
         self.setval(pname, self.popt[pname])
