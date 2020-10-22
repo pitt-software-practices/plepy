@@ -344,7 +344,7 @@ class PLEpy:
         # evalutate model at this point
         return self.solver.solve(self.m)
 
-    def bsearch(self, pname: str, clevel: float, acc: int,
+    def bsearch(self, pname: str, clevel: float, acc: float,
                 direct: int=1, idx=None) -> float:
         """Binary search for confidence limit
         Args
@@ -353,9 +353,9 @@ class PLEpy:
             parameter name
         clevel: float
             value of log of objective function at confidence limit
-        acc: int
-            accuracy in terms of the number of significant figures to
-            consider
+        acc: float
+            maximum fractional difference between binary search bounds
+            allowed for convergence
 
         Keywords
         --------
@@ -511,7 +511,7 @@ class PLEpy:
         print(self.popt[pname])
         return pCI
 
-    def get_clims(self, pnames='all', alpha: float=0.05, acc: int=3):
+    def get_clims(self, pnames='all', alpha: float=0.05, acc: float=0.001):
         """Get confidence limits of parameters
         Keywords
         --------
@@ -520,8 +520,9 @@ class PLEpy:
             will find limits for all parameters, by default 'all'
         alpha : float, optional
             confidence level, by default 0.05
-        acc : int, optional
-            accuracy in terms of significant figures, by default 3
+        acc : float, optional
+            maximum fractional difference between binary search bounds
+            allowed for convergence, by default 0.001
         """
         if isinstance(pnames, str):
             if pnames == 'all':
