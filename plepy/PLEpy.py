@@ -49,6 +49,7 @@ class PLEpy:
         opt = penv.SolverFactory(solver)
         opt.options = solver_opts
         self.solver = opt
+        self.tee = tee
 
         self.m = model
         # Discretize and solve model if necessary
@@ -57,7 +58,7 @@ class PLEpy:
             tfd = penv.TransformationFactory("dae." + dae)
             tfd.apply_to(self.m, **dae_kwds)
         if presolve:
-            r = self.solver.solve(self.m)
+            r = self.solver.solve(self.m, tee=self.tee)
             self.m.solutions.load_from(r)
 
         # Gather parameters to be profiled, their optimized values, and
@@ -342,9 +343,9 @@ class PLEpy:
         else:
             self.plist[pname].set_value(pardr)
         # evalutate model at this point
-        return self.solver.solve(self.m)
+        return self.solver.solve(self.m, tee=self.tee)
 
-    def bsearch(self, pname: str, clevel: float, acc: int,
+    def bsearch(self, pname: str, clevel: float, acc: float,
                 direct: int=1, idx=None) -> float:
         """Binary search for confidence limit
         Args
@@ -353,9 +354,9 @@ class PLEpy:
             parameter name
         clevel: float
             value of log of objective function at confidence limit
-        acc: int
-            accuracy in terms of the number of significant figures to
-            consider
+        acc: float
+            maximum fractional difference between binary search bounds
+            allowed for convergence
 
         Keywords
         --------
@@ -370,7 +371,7 @@ class PLEpy:
         float
             value of parameter bound
         """
-        from plepy.helper import sigfig, sflag
+        from plepy.helper import sflag
 
         # manually change parameter of interest
         if idx is None:
@@ -408,7 +409,8 @@ class PLEpy:
         print(' '*80)
 
         # check convergence criteria
-        ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
+        x_range = x_high - x_low
+        ctol = x_high*acc
 
         # Find outermost feasible value
         # evaluate at outer bound
@@ -426,11 +428,12 @@ class PLEpy:
             fiter = 0
             # If solution is infeasible, find a new value for x_out
             # that is feasible and above the confidence threshold.
-            while (fcheck == 1 or err < clevel) and ctol > 0.0:
+            while (fcheck == 1 or err < clevel) and x_range > ctol:
                 print('f_iter: %i, x_high: %f, x_low: %f'
                         % (fiter, x_high, x_low))
                 # check convergence criteria
-                ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
+                x_range = x_high - x_low
+                ctol = x_high*acc
                 # evaluate at midpoint
                 x_mid = 0.5*(x_high + x_low)
                 r_mid = self.m_eval(pname, x_mid, idx)
@@ -453,7 +456,7 @@ class PLEpy:
                     x_low = x_out
                 fiter += 1
             # if convergence reached, there is no upper CI
-            if ctol == 0.0:
+            if x_range < ctol:
                 pCI = no_lim
                 print('No %s CI! Setting to %s bound.' % (plc, plc))
             # otherwise, find the upper CI between outermost feasible
@@ -469,18 +472,18 @@ class PLEpy:
                 biter = 0
                 # repeat until convergence criteria is met
                 # (i.e. x_high = x_low)
-                while ctol > 0.0:
+                while x_range > ctol:
                     print('b_iter: %i, x_high: %f, x_low: %f'
                             % (biter, x_high, x_low))
                     # check convergence criteria
-                    ctol = sigfig(x_high, acc) - sigfig(x_low, acc)
+                    x_range = x_high - x_low
+                    ctol = x_high*acc
                     # evaluate at midpoint
                     x_mid = 0.5*(x_high + x_low)
                     r_mid = self.m_eval(pname, x_mid, idx=idx)
                     fcheck = sflag(r_mid)
                     self.m.solutions.load_from(r_mid)
                     err = np.log(penv.value(self.m.obj))
-                    print(self.popt[pname])
                     biter += 1
                     # if midpoint infeasible, continue search inward
                     if fcheck == 1:
@@ -497,7 +500,7 @@ class PLEpy:
                     else:
                         x_high = x_in
                         x_low = x_out
-                pCI = sigfig(x_mid, acc)
+                pCI = x_mid
                 print('%s CI of %f found!' % (puc, pCI))
         # reset parameter
         self.setval(pname, self.popt[pname])
@@ -505,10 +508,9 @@ class PLEpy:
             self.plist[pname].free()
         else:
             self.plist[pname][idx].free()
-        print(self.popt[pname])
         return pCI
 
-    def get_clims(self, pnames='all', alpha: float=0.05, acc: int=3):
+    def get_clims(self, pnames='all', alpha: float=0.05, acc: float=0.001):
         """Get confidence limits of parameters
         Keywords
         --------
@@ -517,8 +519,9 @@ class PLEpy:
             will find limits for all parameters, by default 'all'
         alpha : float, optional
             confidence level, by default 0.05
-        acc : int, optional
-            accuracy in terms of significant figures, by default 3
+        acc : float, optional
+            maximum fractional difference between binary search bounds
+            allowed for convergence, by default 0.001
         """
         if isinstance(pnames, str):
             if pnames == 'all':
